@@ -1,4 +1,4 @@
-#ifdef LSTM_H
+#ifndef LSTM_H
 #define LSTM_H
 #include <iostream>
 #include <cassert>
@@ -11,15 +11,15 @@
 
 using namespace std;
 
-double sigma(x){return 1/(1+exp(-x));}
+double sigma(double x){return 1/(1+exp(-x));}
 
 void G_c(ColVector<double>& x, ColVector<double>& g){
   int dim = x.nrows();
-  for(int i = 0;i i < dim;i++) g[i] = sigma(x[i]);
+  for(int i = 0; i < dim;i++) g[i] = sigma(x[i]);
 }
 void dG_c(ColVector<double>& x, ColVector<double>& g){
   int dim = x.nrows();
-  for(int i = 0;i i < dim;i++)g[i] = sigma(x[i])*sigma(-x[i]);
+  for(int i = 0; i < dim;i++)g[i] = sigma(x[i])*sigma(-x[i]);
 }
 void G_d(ColVector<double>& x, ColVector<double>& g){
   int dim = x.nrows();
@@ -78,9 +78,9 @@ class LSTMcell {
 
   static ColVector<double> d_cu; // G_c'(a_cu)
   static ColVector<double> d_cs; // G_c'(a_cs)
-  static ColVector<double> d_cr; // G_c'(a_cr);
-  static ColVector<double> d_r; // G_d'(state);
-  static ColVector<double> d_u; // G_d'(input_sum)
+  static ColVector<double> d_cr; // G_c'(a_cr)
+  static ColVector<double> d_s; // G_d'(state)
+  static ColVector<double> d_du; // G_d'(a_du)
 
   static ColVector<double> chi; // dE/dv
   static ColVector<double> rho; // dE/dr
@@ -114,6 +114,7 @@ class LSTMcell {
   ColVector<double> a_cu; // (input-gate sum)
   ColVector<double> a_cs; // (state-gate sum)
   ColVector<double> a_cr; // (readout-gate sum)
+  ColVector<double> a_du; // (input sum)
   ColVector<double> g_cu; // G_c(a_cu)
   ColVector<double> g_cs; // G_c(a_cs)
   ColVector<double> g_cr; // G_c(a_cr)
@@ -130,27 +131,26 @@ class LSTMcell {
   ColVector<double> _input;
 
 public:
-  LSTMcell(void){}
-  void reset(LSTMcell* pc, LSTMcell* nc){ prev_cell = pc; next_cell = nc;}
+  LSTMcell(void);
+  void reset(LSTMcell* pc, LSTMcell* nc);
   static void static_initialization
   (
-   Matrix<double>& W_xdu0, // initial parameter values
-   Matrix<double>& W_vdu0,
-           
-   Matrix<double>& W_vcu0,
-   Matrix<double>& W_xcu0,
-   Matrix<double>& W_scu0,
-           
-   Matrix<double>& W_vcs0,
-   Matrix<double>& W_xcs0,
-   Matrix<double>& W_scs0,
-           
-   Matrix<double>& W_xcr0,
-   Matrix<double>& W_scr0,
-   Matrix<double>& W_vcr0);
+   const Matrix<double>& W_xdu0,
+   const Matrix<double>& W_vdu0,
 
-  ColVector<double> state(void){return _state);
-  ColVector<double> readout(void){return _readout);
+   const Matrix<double>& W_vcu0,
+   const Matrix<double>& W_xcu0,
+   const Matrix<double>& W_scu0,
+
+   const Matrix<double>& W_vcs0,
+   const Matrix<double>& W_xcs0,
+   const Matrix<double>& W_scs0,
+
+   const Matrix<double>& W_xcr0,
+   const Matrix<double>& W_scr0,
+   const Matrix<double>& W_vcr0);
+  ColVector<double> state(void){return _state;}
+  ColVector<double> readout(void){return _readout;}
   void forward_step(ColVector<double>& x);
   void backward_step(ColVector<double>& dE_dv);
 
