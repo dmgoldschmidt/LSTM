@@ -45,25 +45,9 @@ class LSTMcell {
    * 2. readout, a squashed and gated version of the current state
 
    */
+  friend class LSTM;
   static int s; // dimension of the state vector
   static int d; // dimension of the input vector
-
-  // Shared by all instances
-  static Matrix<double> W_xdu; // from input to a_du 
-  static Matrix<double> W_vdu; // from lastcell a_du
-
-  static Matrix<double> W_vcu; // from lastcell to a_cu 
-  static Matrix<double> W_xcu; // from input a_cu
-  static Matrix<double> W_scu; // from state to a_cu
-
-  static Matrix<double> W_vcs; // from lastcell to a_cs 
-  static Matrix<double> W_xcs; // from input to a_cs
-  static Matrix<double> W_scs; // from state to a_cs
-
-  static Matrix<double> W_xcr; // from input to a_cr 
-  static Matrix<double> W_scr; // from state to a_cr
-  static Matrix<double> W_vcr; // from lastcell to a_cr
-
 
   /* backward pass temporaries
    * they are esssentially scratch computations that don't need to be saved
@@ -102,6 +86,21 @@ class LSTMcell {
   static Matrix<double> dE_dW_scr;
   static Matrix<double> dE_dW_vcr;
 
+  // references to the model parameters
+  Matrix<double>& W_xdu; // from input to a_du 
+  Matrix<double>& W_vdu; // from lastcell a_du
+
+  Matrix<double>& W_vcu; // from lastcell to a_cu 
+  Matrix<double>& W_xcu; // from input a_cu
+  Matrix<double>& W_scu; // from state to a_cu
+
+  Matrix<double>& W_vcs; // from lastcell to a_cs 
+  Matrix<double>& W_xcs; // from input to a_cs
+  Matrix<double>& W_scs; // from state to a_cs
+
+  Matrix<double>& W_xcr; // from input to a_cr 
+  Matrix<double>& W_scr; // from state to a_cr
+  Matrix<double>& W_vcr; // from lastcell to a_cr
 
   /* these parameters are instance specific but are defined here
    * so that we don't thrash dynamic memory by re-allocating each
@@ -132,31 +131,33 @@ class LSTMcell {
 
 public:
   LSTMcell(void);
-  void reset(LSTMcell* pc, LSTMcell* nc);
-  static void static_initialization
-  (
-   const Matrix<double>& W_xdu0,
-   const Matrix<double>& W_vdu0,
-
-   const Matrix<double>& W_vcu0,
-   const Matrix<double>& W_xcu0,
-   const Matrix<double>& W_scu0,
-
-   const Matrix<double>& W_vcs0,
-   const Matrix<double>& W_xcs0,
-   const Matrix<double>& W_scs0,
-
-   const Matrix<double>& W_xcr0,
-   const Matrix<double>& W_scr0,
-   const Matrix<double>& W_vcr0);
+  void reset(LSTMcell* pc, LSTMcell* nc, Array<Matrix<double>>& p);
+  static void static_initialization(int ss, int dd);
   ColVector<double> state(void){return _state;}
   ColVector<double> readout(void){return _readout;}
   void forward_step(ColVector<double>& x);
   void backward_step(ColVector<double>& dE_dv);
-
 };
 
-
+class LSTM {
+  Array<LSTMcell> cells;
+  int ncells;
+  int nstates;
+  Matrix<double> data;
+  Matrix<double> output;
+  Array<Matrix<double>> parameters;
+public:
+  LSTM(int ns, Matrix<double>& d, Matrix<double>& o, Array<Matrix<double>>& p) :
+    nstates(ns), data(d),output(o),parameters(p){
+    
+    ncells = d.ncols(); 
+    cells.reset(ncells+2); // first and last cell are initializers
+    cells[0]._state = cells[0]._readout = 0;
+    cells[ncells+1].f_chi = cells[ncells+1].f_psi = 0;
+    LSTMcell::static_initializer(
+    for(int i = 1;i <= ncells;i++) cells[i].
+    
+    
 
 
 #endif

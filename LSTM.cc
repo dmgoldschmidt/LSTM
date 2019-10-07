@@ -4,41 +4,10 @@
 #include "LSTM.h"
 using namespace std;
 
-void LSTMcell::static_initialization
-(
- const Matrix<double>& W_xdu0,
- const Matrix<double>& W_vdu0,
-
- const Matrix<double>& W_vcu0,
- const Matrix<double>& W_xcu0,
- const Matrix<double>& W_scu0,
-
- const Matrix<double>& W_vcs0,
- const Matrix<double>& W_xcs0,
- const Matrix<double>& W_scs0,
-
- const Matrix<double>& W_xcr0,
- const Matrix<double>& W_scr0,
- const Matrix<double>& W_vcr0){
-
-  //initialize parameters
-  W_xdu.copy(W_xdu0);
-  W_vdu.copy(W_vdu0);
-  W_vcu.copy(W_vcu0);
-  W_xcu.copy(W_xcu0);
-  W_scu.copy(W_scu0);
-  W_vcs.copy(W_vcs0);
-  W_xcs.copy(W_xcs0);
-  W_scs.copy(W_scs0);
-  W_xcr.copy(W_xcr0);
-  W_scr.copy(W_scr0);
-  W_vcr.copy(W_vcr0);
-
+void LSTMcell::static_initialization(int ss, int dd ){
   
-  // OK, static model parameters are set
-  
-  s = W_xdu0.nrows(); // state/output dimension
-  d = W_xdu0.ncols(); // input dimension
+  s = ss; // state/output dimension
+  d = dd; // input dimension
 
   //initialize gradients
   dE_dW_xdu.reset(s,d);
@@ -61,7 +30,19 @@ void LSTMcell::static_initialization
 
 }
 
-void LSTMcell::reset(LSTMcell* pc, LSTMcell* nc){
+void LSTMcell::reset(LSTMcell* pc, LSTMcell* nc, const Array<Matrix<double>>& p) :
+  W_xdu(p[0]),
+  W_vdu(p[1]),
+  W_vcu(p[2]),
+  W_xcu(p[3]),
+  W_scu(p[4]),
+  W_vcs(p[5]),
+  W_xcs(p[6]),
+  W_scs(p[7]),
+  W_xcr(p[8]),
+  W_scr(p[9]),
+  W_vcr(p[10])
+{
   prev_cell = pc; next_cell = nc;
   u.reset(s);r.reset(s);a_du.reset(s);a_cu.reset(s);a_cs.reset(s);a_cr.reset(s);
   g_cu.reset(s);g_cs.reset(s);g_cr.reset(s);f_chi.reset(s);f_psi.reset(s);
@@ -106,7 +87,7 @@ void LSTMcell::backward_step(ColVector<double>& dE_dv){
   RowVector<double> x = _input.T();
   RowVector<double> s0 = prev_cell->_state.T();
   RowVector<double> s1 = _state.T();
-  dE_dW_xdu += alpha_du*x.T();
+  dE_dW_xdu += alpha_du*x;
   dE_dW_vdu += alpha_du*v;
   dE_dW_vcu += alpha_cu*v;
   dE_dW_xcu += alpha_cu*x;
@@ -117,7 +98,5 @@ void LSTMcell::backward_step(ColVector<double>& dE_dv){
   dE_dW_xcr += alpha_cr*x;
   dE_dW_scr += alpha_cr*s1;
   dE_dW_vcr += alpha_cr*v;
-  
-  
 }
   
