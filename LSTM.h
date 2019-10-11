@@ -11,26 +11,14 @@
 
 using namespace std;
 
-double sigma(double x){return 1/(1+exp(-x));}
+inline double sigma(double x){return 1/(1+exp(-x));}
 
-void G_c(ColVector<double>& x, ColVector<double>& g){
-  int dim = x.nrows();
-  for(int i = 0; i < dim;i++) g[i] = sigma(x[i]);
-}
-void dG_c(ColVector<double>& x, ColVector<double>& g){
-  int dim = x.nrows();
-  for(int i = 0; i < dim;i++)g[i] = sigma(x[i])*sigma(-x[i]);
-}
-void G_d(ColVector<double>& x, ColVector<double>& g){
-  int dim = x.nrows();
-  for(int i = 0;i < dim;i++) g[i] = 2*sigma(x[i])-1;
-}
-void dG_d(ColVector<double>& x, ColVector<double>& g){
-  int dim = x.nrows();
-  for(int i = 0;i < dim;i++)g[i] = 2*sigma(x[i])*sigma(-x[i]);
-}
+void G_c(ColVector<double>& x, ColVector<double>& g);
+void dG_c(ColVector<double>& x, ColVector<double>& g);
+void G_d(ColVector<double>& x, ColVector<double>& g);
+void dG_d(ColVector<double>& x, ColVector<double>& g);
 
-class LSTMcell {
+struct LSTMcell {
   /* There are three gates:
    * 1. state update: controls a squashed linear combination of the input and the last cell readout
    *    gate parameters are a squashed linear combination of previous state, input, and last cell readout
@@ -46,9 +34,10 @@ class LSTMcell {
 
    */
   friend class LSTM;
-  static int s; // dimension of the state vector
-  static int d; // dimension of the input vector
+  static int n_s; // dimension of the state and output vectors
+  static int n_x; // dimension of the input vector
 
+  
   /* backward pass temporaries
    * they are esssentially scratch computations that don't need to be saved
    * so they are static to minimize dynamic memory thrashing. Each instance
@@ -68,11 +57,11 @@ class LSTMcell {
 
   static ColVector<double> chi; // dE/dv
   static ColVector<double> rho; // dE/dr
-  static ColVector<double> gamma; // dE/dg
+  //  static ColVector<double> gamma; // dE/dg
   static ColVector<double> psi; // dE/ds
 
   /* these are the actual gradients we will use to update parameters for
-   * the next iteration.  Each instance adds its contribution.
+   * the next iteration.  Each cell object adds its contribution.
    */
   static Matrix<double> dE_dW_xdu;
   static Matrix<double> dE_dW_vdu;
@@ -86,21 +75,21 @@ class LSTMcell {
   static Matrix<double> dE_dW_scr;
   static Matrix<double> dE_dW_vcr;
 
-  // references to the model parameters
-  Matrix<double>& W_xdu; // from input to a_du 
-  Matrix<double>& W_vdu; // from lastcell a_du
+  // hidden pointers to the the model parameters. See Matrix.h for details
+  Matrix<double> W_xdu; // from input to a_du 
+  Matrix<double> W_vdu; // from lastcell a_du
 
-  Matrix<double>& W_vcu; // from lastcell to a_cu 
-  Matrix<double>& W_xcu; // from input a_cu
-  Matrix<double>& W_scu; // from state to a_cu
+  Matrix<double> W_vcu; // from lastcell to a_cu 
+  Matrix<double> W_xcu; // from input a_cu
+  Matrix<double> W_scu; // from state to a_cu
 
-  Matrix<double>& W_vcs; // from lastcell to a_cs 
-  Matrix<double>& W_xcs; // from input to a_cs
-  Matrix<double>& W_scs; // from state to a_cs
+  Matrix<double> W_vcs; // from lastcell to a_cs 
+  Matrix<double> W_xcs; // from input to a_cs
+  Matrix<double> W_scs; // from state to a_cs
 
-  Matrix<double>& W_xcr; // from input to a_cr 
-  Matrix<double>& W_scr; // from state to a_cr
-  Matrix<double>& W_vcr; // from lastcell to a_cr
+  Matrix<double> W_xcr; // from input to a_cr 
+  Matrix<double> W_scr; // from state to a_cr
+  Matrix<double> W_vcr; // from lastcell to a_cr
 
   /* these parameters are instance specific but are defined here
    * so that we don't thrash dynamic memory by re-allocating each
@@ -130,34 +119,30 @@ class LSTMcell {
   ColVector<double> _input;
 
 public:
-  LSTMcell(void);
+  LSTMcell(void) {}
   void reset(LSTMcell* pc, LSTMcell* nc, Array<Matrix<double>>& p);
-  static void static_initialization(int ss, int dd);
+  static void static_initializer(int ss, int dd);
   ColVector<double> state(void){return _state;}
   ColVector<double> readout(void){return _readout;}
   void forward_step(ColVector<double>& x);
   void backward_step(ColVector<double>& dE_dv);
 };
 
-class LSTM {
+struct LSTM {
   Array<LSTMcell> cells;
   int ncells;
-  int nstates;
-  Matrix<double> data;
+  int n_s;
+  int n_x;
+  Matrix<double> data; // include an extra row set to 1.0 if you want a bias term
   Matrix<double> output;
   Array<Matrix<double>> parameters;
 public:
-  LSTM(int ns, Matrix<double>& d, Matrix<double>& o, Array<Matrix<double>>& p) :
-    nstates(ns), data(d),output(o),parameters(p){
+  LSTM(Matrix<double>& d, Matrix<double>& o, Array<Matrix<double>>& p);
+  void train(int max_iters, double pct=1.0, double learn = .1, double eps = 1.0e-8);
+
+};
     
-    ncells = d.ncols(); 
-    cells.reset(ncells+2); // first and last cell are initializers
-    cells[0]._state = cells[0]._readout = 0;
-    cells[ncells+1].f_chi = cells[ncells+1].f_psi = 0;
-    LSTMcell::static_initializer(
-    for(int i = 1;i <= ncells;i++) cells[i].
-    
-    
+
 
 
 #endif
