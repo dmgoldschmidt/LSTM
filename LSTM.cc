@@ -4,6 +4,12 @@
 #include "LSTM.h"
 using namespace std;
 
+ColVector<double> squash(ColVector<double> x){
+  for(int i = 0;i < x.nrows();i++)x[i] = sigma(x[i]);
+  return x;
+}
+
+
 void G_c(ColVector<double>& x, ColVector<double>& g){
   assert(g.nrows() == x.nrows());
   int dim = x.nrows();
@@ -88,7 +94,7 @@ void LSTMcell::static_initializer(int ss, int xx){
 
   // initialize backward pass temporaries
   alpha_du.reset(n_s);alpha_cu.reset(n_s);alpha_cs.reset(n_s);alpha_cr.reset(n_s);d_cu.reset(n_s);
-  d_cs.reset(n_s);d_cr.reset(n_s);d_s.reset(n_s);chi.reset(n_s);rho.reset(n_s);psi.reset(n_s); 
+  d_cs.reset(n_s);d_cr.reset(n_s);d_s.reset(n_s);d_du.reset(n_s);chi.reset(n_s);rho.reset(n_s);psi.reset(n_s); 
 }
 
 void LSTMcell::reset(LSTMcell* pc, LSTMcell* nc, Array<Matrix<double>>& p)
@@ -105,7 +111,7 @@ void LSTMcell::reset(LSTMcell* pc, LSTMcell* nc, Array<Matrix<double>>& p)
   W_scu = p[9];
   W_scs = p[10];
 
-  prev_cell = pc; next_cell = nc;
+  prev_cell = pc; next_cell = nc;_state.reset(n_s);_readout.reset(n_s),_input.reset(n_x);
   u.reset(n_s);r.reset(n_s);a_du.reset(n_s);a_cu.reset(n_s);a_cs.reset(n_s);a_cr.reset(n_s);
   g_cu.reset(n_s);g_cs.reset(n_s);g_cr.reset(n_s);f_chi.reset(n_s);f_psi.reset(n_s);
 }
@@ -140,7 +146,8 @@ void LSTMcell::backward_step(ColVector<double>& dE_dv){
   rho = chi&g_cr;
   alpha_cr = chi&r&d_cr;
   psi = (rho&d_s) + W_scr*alpha_cr + next_cell->f_psi;
-  alpha_cs = psi&prev_cell->state()&d_cs;
+  alpha_cs = (prev_cell->state())&d_cs&psi;
+  //  alpha_cs = alpha_cs&d_cs;
   alpha_cu = psi&u&d_cu;
   alpha_du = psi&g_cu&d_du;
   f_chi = W_vcu*alpha_cu + W_vcs*alpha_cs + W_vcr*alpha_cr + W_vdu*alpha_du;
@@ -166,18 +173,22 @@ void LSTMcell::backward_step(ColVector<double>& dE_dv){
 LSTM::LSTM(Matrix<double>& d, Matrix<double>& o, Array<Matrix<double>>& p) :
   data(d),output(o),parameters(p){
 
-  n_s = output.nrows();
+  LSTMcell::static_initializer(output.nrows(),data.nrows());
   for(int i = 0;i < 4;i++)assert(data.nrows() == parameters[i].ncols()); // input dimension
-  for(int i = 4;i < 10;i++)assert(n_s == parameters[i].ncols());
-  for(int i = 0;i < 10;i++)assert(n_s == parameters[i].nrows());
+  for(int i = 4;i < 10;i++)assert(output.nrows() == parameters[i].ncols());
+  for(int i = 0;i < 10;i++)assert(output.nrows() == parameters[i].nrows());
 
+  int& n_s = LSTMcell::n_s;
   ncells = data.ncols(); 
   cells.reset(ncells+2); // first and last cell are initializers
-   
+
+  cells[0].reset(nullptr,&cells[1],parameters);
+  cells[ncells+1].reset(&cells[ncells],nullptr,parameters);
   for(int i = 1;i <= ncells;i++)cells[i].reset(&cells[i-1],&cells[i+1],parameters);
-  cells[0]._state = cells[0]._readout = 0;
-  cells[ncells+1].f_chi = cells[ncells+1].f_psi = 0;
-  LSTMcell::static_initializer(n_s,data.nrows());
+  for(int i = 0;i <  n_s;i++){
+    cells[0]._state[i] = cells[0]._readout[i] = 0;
+    cells[ncells+1].f_chi[i] = cells[ncells+1].f_psi[i] = 0;
+  }
 }
 
 void LSTM::train(int niters,double pct,double learn,double eps){

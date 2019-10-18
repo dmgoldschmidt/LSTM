@@ -10,6 +10,7 @@
 #include "Matrix.h"
 #include "GetOpt.h"
 #include "LSTM.h"
+#include "LSTM_1.h"
 
 
 // #include "nr3/nr3.h"
@@ -40,24 +41,41 @@ int main(int argc, char** argv){
   for(int k = 4;k < 11;k++)parameters[k].reset(n_s,n_s);
   for(int k = 0;k < 11;k++){ // set all parameters to random values
     for(int i = 0;i < parameters[k].nrows();i++){
-      for(int j = 0;j < parameters[k].ncols();j++) parameters[k](i,j) = gen.dev();
+      for(int j = 0;j < parameters[k].ncols();j++){
+        parameters[k](i,j) = gen.dev();
+        cout << format("param[%d](%d,%d) = %f\n",k,i,j,parameters[k](i,j));
+      }        
     }
   }
-  Matrix<double> data(n_x,n_data);
-  for(int t = 0;t < n_data;t++){
-    for(int i = 0;i < n_x;i++) data(i,t) = gen.dev();
+  Matrix<Matrix<double>> parameters_1(4,3);
+  int k = 0;
+  for(int i = 0;i < 4;i++) parameters_1(i,2) = parameters[k++];
+  for(int j = 0;j < 2;j++) parameters_1(3,j) = parameters[k++];
+  for(int i = 0;i < 3;i++) parameters_1(i,0) = parameters[k++];
+  for(int i = 1;i < 3;i++) parameters_1(i,1) = parameters[k++];
+  parameters_1(0,1).reset(1,1);
+ 
+  
+  Matrix<double> data(n_x,n_data+1);
+  for(int t = 1;t <= n_data;t++){
+    for(int i = 0;i < n_x;i++){
+      data(i,t) = gen.dev();
+      cout << format("data(%d,%d) = %f\n",i,t,data(i,t));
+    }
   }
   Matrix<double> output(n_s,n_data+1);
+  Matrix<double> output_1(n_s,n_data+1);
   LSTM lstm(data,output,parameters);
-  ColVector<double> x(n_x),y(n_s);
+  LSTM_1 lstm_1(data,output_1,parameters_1);
   for(int t = 1; t <= n_data;t++){
-    x = data.slice(0,t,1,n_x);
-    y = output.slice(0,t,1,n_s);
+    ColVector<double> x = data.slice(0,t,n_x,1);
+    //    ColVector<double> y = output.slice(0,t,n_s,1);
     lstm.cells[1].forward_step(x);
-    y = lstm.cells[1].readout();
+    lstm_1.cells[1].forward_step(x);
+    output.slice(0,t,n_s,1).copy(lstm.cells[1].readout());
+    output_1.slice(0,t,n_s,1).copy(lstm_1.cells[1].readout());
   }
-  cout << "x: "<<x.T()<<endl;
-  cout << "y: "<<y.T()<<endl;
+  cout<<"data:\n"<<data<<"output:\n"<<output<<"output_1:\n"<<output_1;
 }
     
                             

@@ -12,11 +12,13 @@
 using namespace std;
 
 inline double sigma(double x){return 1/(1+exp(-x));}
+ColVector<double> squash(ColVector<double> x);
 
 void G_c(ColVector<double>& x, ColVector<double>& g);
 void dG_c(ColVector<double>& x, ColVector<double>& g);
 void G_d(ColVector<double>& x, ColVector<double>& g);
 void dG_d(ColVector<double>& x, ColVector<double>& g);
+
 
 struct LSTMcell {
   /* There are three gates:
@@ -37,7 +39,6 @@ struct LSTMcell {
   static int n_s; // dimension of the state and output vectors
   static int n_x; // dimension of the input vector
 
-  
   /* backward pass temporaries
    * they are esssentially scratch computations that don't need to be saved
    * so they are static to minimize dynamic memory thrashing. Each instance
@@ -131,8 +132,8 @@ public:
 struct LSTM {
   Array<LSTMcell> cells;
   int ncells;
-  int n_s;
-  int n_x;
+  //  int n_s;
+  //  int n_x;
   Matrix<double> data; // include an extra row set to 1.0 if you want a bias term
   Matrix<double> output;
   Array<Matrix<double>> parameters;
