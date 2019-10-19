@@ -17,10 +17,11 @@ struct Gate {
   RowVector<Matrix<double>> W;
   ColVector<double> g;
   RowVector<Matrix<double>> dg_dw;
+  RowVector<Matrix<double>> dg_dW;
  public:
   Gate(void){}
   void reset(RowVector<Matrix<double>> W0);
-  ColVector<double> operator()(ColVector<double>& v, ColVector<double>& s, ColVector<double>& x);
+  ColVector<double> operator()(RowVector<ColVector<double>>& w);
 };
 
 struct LSTM_1cell {
@@ -45,23 +46,24 @@ struct LSTM_1cell {
   static int n_x; // dimension of the input vector
   static ColVector<double> zero;
   Array<Gate> gate;
-  ColVector<double> s; // state
-  ColVector<double> v; // readout
-  //ColVector<double> r0;
+  // ColVector<double>& s; // state
+  // ColVector<double>& v; // readout
+  ColVector<double> r; // tanh(s/2)
+  RowVector<ColVector<double>> w;
   LSTM_1cell* prev_cell;
   LSTM_1cell* next_cell;
-  ColVector<double> input;
+  // ColVector<double>& input;
   
   // Backprop variables: input from next cell, output to prev cell
   RowVector<double> d_ds; // d(forward error)/d(state)
   RowVector<double> d_dv; // d(forward error)/d(readout) 
 
 
-  LSTM_1cell(void){}
+  LSTM_1cell(void) {}
   void reset(LSTM_1cell* pc, LSTM_1cell* nc, Matrix<Matrix<double>> W0);
   void forward_step(ColVector<double>& x);
   void backward_step(RowVector<double>& dE_dv); // input is d(this_cell error)/d(readout)
-  const ColVector<double>& readout(void){return v;}
+  const ColVector<double>& readout(void){return w[0];}
 
   static void static_initializer(int ss, int xx);
   static double sigma(double x);
