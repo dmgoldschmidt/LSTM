@@ -1,0 +1,4 @@
+Sat Oct 12 16:18:55 PDT 2019
+Testing LSTMcell via test_LSTM.  I have one cell, and I'm getting "reasonable looking" output
+with 2 time steps.  Next test:  generate 100 data points with random parameters, then perturb
+the parameters and try to climb back.
