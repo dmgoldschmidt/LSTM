@@ -3,5 +3,9 @@ Testing LSTMcell via test_LSTM.  I have one cell, and I'm getting "reasonable lo
 with 2 time steps.  Next test:  generate 100 data points with random parameters, then perturb
 the parameters and try to climb back.
 
+
 Sun Oct 20 13:30:20 PDT 2019
 Changed Gate.operator() to accept a RowVector<ColVector<double>> instead of three ColVectors {v,s,x}, and added dg_dW for the local parameter update.
+
+Wed 21 Jul 2021 01:02:38 PM PDT
+Restarting work on LSTM.  Changed access to ssh.
