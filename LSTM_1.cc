@@ -13,6 +13,7 @@ void LSTM_1cell::static_initializer(int ss, int xx){
   n_s = ss; // state dimension
   n_x = xx; // input dimension
   zero.reset(n_s);
+  d_dg.reset(n_s);
   for(int i = 0;i < n_s;i++)zero[i] = 0;
 }
 
@@ -113,11 +114,12 @@ void LSTM_1cell::forward_step(ColVector<double>& x){
   //cout << "new v: "<<v<<endl;
 }
 
-// void LSTM_1cell::backward_step(RowVector<double>& dE_dv){
-//   assert(next_cell != nullptr && prev_cell != nullptr);
-//   d_dg = d_dv&r;
-//   for(int k = 0;k < 3;k++){
-//     (d_dg*gate[3].dg_dw[k]
+void LSTM_1cell::backward_step(RowVector<double>& dE_dv){
+  assert(next_cell != nullptr && prev_cell != nullptr);
+  d_dv = next_cell->d_dv + dE_dv;  // input from local error and backprop
+  d_dg = d_dv&r;
+  for(int k = 0;k < 3;k++){
+    (d_dg*gate[3].dg_dw[k]
 
 
 

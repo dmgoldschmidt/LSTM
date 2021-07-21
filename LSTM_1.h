@@ -14,6 +14,17 @@ using namespace std;
  
 
 struct Gate {
+  /* A gate is just the function g = sigma(W_v*v + W_s*s + W_x*x). The products are matrix*vector products.
+   * It is called a gate because g is component-wise multiplied by an information signal z = (v,s,or x)
+   * which reduces the amplitude of z.  So a component of g near 1 lets most of the corresponding
+   * component of z pass through, while a value near zero blocks most of that component.
+   
+   * The gate also operates in back-propagation mode.  In this mode, the input is dE/dg where E is some
+   * sort of error signal.  The gate then computes dg/dW_i and dg/dz_i which are then multiplied by dE/dg
+   * to get dE/dW_i for input to the parameter correction logic, and dE/dz_i for further back-propogation
+   * to earlier gates and cells.
+   */
+
   RowVector<Matrix<double>> W;
   ColVector<double> g;
   RowVector<Matrix<double>> dg_dw;
@@ -21,12 +32,11 @@ struct Gate {
  public:
   Gate(void){}
   void reset(RowVector<Matrix<double>> W0);
-  ColVector<double> operator()(RowVector<ColVector<double>>& w);
+  ColVector<double> operator()(RowVector<ColVector<double>>& z);
 };
 
 struct LSTM_1cell {
-  /* A gate is just the function g = sigma(W_v*v + W_s*s + W_x*x). The products are matrix*vector products.
-   * A cell consists of four gates.  cell[0] is special since a) the input vector s is always zero,
+  /* A cell consists of four gates.  cell[0] is special since a) the input vector s is always zero,
    * and b) the output g is modified to 2*g-1. 
    * The parameters are 11 matrices arranged in a 4x3 grid W.  W(i,j) (i,j = 1,2,3) is the 
    * matrix which multiplies input vector j(0=v,1=s,2=x) to gate i.  W(0,1) is a dummy matrix.
@@ -45,6 +55,7 @@ struct LSTM_1cell {
   static int n_s; // dimension of the state and output vectors
   static int n_x; // dimension of the input vector
   static ColVector<double> zero;
+  static RowVector<double> d_dg; // temporary storage during backprop
   Array<Gate> gate;
   // ColVector<double>& s; // state
   // ColVector<double>& v; // readout
