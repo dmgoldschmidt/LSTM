@@ -38,19 +38,20 @@ struct Gate {
 struct LSTMcell {
   /* A cell consists of four gates.  cell[0] is special since a) the input vector s is always zero,
    * and b) the output g is modified to 2*g-1. 
-   * The parameters are 11 matrices arranged in a 4x3 grid W.  W(i,j) 
-   * (i = 0,1,2,3; j = 0,1,2) is the 
-   * matrix which multiplies input vector j(0=v,1=s,2=x) to gate i.  W(0,1) is a dummy matrix.
+   * The parameters are 11 matrices arranged in a 3x4 grid W.  W(i,j) 
+   * (i = 0,1,2; j = 0,1,2,3) is the 
+   * matrix which multiplies input vector i(0=v,1=s,2=x) to get gate j 
+   * (j = 1,2,3).  W(1,0) is a dummy matrix.
    * n_s (resp. n_x) is the dimension of the state (s) and readout (v) vectors (resp. input vector x).  Note that the actual number of state 
    * (resp. input) variables is n_s-1 (resp. n_x-1) because component 0
    * of each type is has constant value 1 to provide for bias.   
    * W(i,2) has dimension n_x by n_s (0<=i<=3).  All other parameter matrices have dimension n_s by n_s.  
-   * The LSTM itself is a linear array of cells. Each one takes a separate input vector x and the readout
-   * vector from the previous cell as the input to gates 0-3. The state output from the previous cell is input
-   * to gates 1 and 2.  All cells use and update the same 11 parameter matrices.
+   * The LSTM itself is a linear array of cells. Each one takes a separate input vector x and the readout and state
+   * vectors from the previous cell as the input to gates 0-3. 
+   * All cells use and update the same 11 parameter matrices.
    * There are two outputs:
-   * 1. current state, an ungated sum of the gated previous state and the gated non-linear combination of 
-        input and last cell output
+   * 1. current state, a sum of the gated previous state and a gated 
+   * non-linear combination of input and last cell output
    * 2. readout, a squashed and gated version of the current state
    */
   friend class LSTM;

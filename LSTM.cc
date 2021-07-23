@@ -32,29 +32,32 @@ ColVector<double> LSTMcell::bulge(ColVector<double> x){
 }
 
 void Gate::reset(RowVector<Matrix<double>> W0){
-  assert(W0.dim() == 3);
-  W = W0; // shallow copy
+  assert(W0.nrows() == 3 && W0.ncols() == 4);
+  W = W0; // shallow copy NOTE: W0 will get updated each iteration
   //  cout <<"Gate reset: W:\n"<<W;
-  for(int i = 0;i < 2;i++)assert(W[i].ncols() == LSTMcell::n_s);
-  assert(W[2].ncols() == LSTMcell::n_x);
+  for(int i = 0;i < 2;i++){
+    for(int j = 0;j < 3){
+      assert(W(i,j).ncols() == LSTMcell::n_s);
+      assert(W(2,j).ncols() == LSTMcell::n_x);
+    }
+  }
   g.reset(LSTMcell::n_s);
-  dg_dw.reset(3);
+  dg_dz.reset(3);
   dg_dW.reset(3);
   for(int k = 0;k < 3;k++){
-    dg_dw[k].reset(W[k].nrows(),W[k].ncols());
+    dg_dz[k].reset(W[k].nrows(),W[k].ncols());
     dg_dW[k].reset(W[k].nrows(),W[k].ncols());
   }
 }
 
-ColVector<double> Gate::operator()(RowVector<ColVector<double>>& w){
-  // cout << "W[2]: "<<W[2]<<" x: "<<x<<" W[2]*x: "<<W[2]*x;
-  // cout << "W[1]: "<<W[1]<<" s: "<<s<<" W[1]*s: "<<W[1]*s;
-  // cout << "W[0]: "<<W[0]<<" v: "<<v<<" W[0]*v: "<<W[0]*v;
-  ColVector<double>& v = w[0];
-  ColVector<double>& s = w[1];
-  ColVector<double>& x = w[2];
+ColVector<double> Gate::operator()(int j, RowVector<ColVector<double>>& z){
+  // j is the gate number
+  ColVector<double>& v = z[0];
+  ColVector<double>& s = z[1];
+  ColVector<double>& x = z[2];
 
-  g = W[0]*v + W[1]*s + W[2]*x;
+  g = W(0,j)*v + W(2,j)*x;
+  if(j > 0) g += W(1,j)*s;
   //  cout << "g: "<<g;
   for(int k = 0;k < W.dim();k++){
     for(int i = 0;i < g.nrows();i++){
