@@ -6,42 +6,31 @@ using namespace std;
 
 //static variables defined at global scope
 
-int LSTMcell::n_s; // dimension of the state and output vectors
-int LSTMcell::n_x; // dimension of the input vector
-ColVector<double> LSTMcell::zero;
-RowVector<double> LSTMcell::d_dg;
+// int LSTMcell::n_s; // dimension of the state and output vectors
+// int LSTMcell::n_x; // dimension of the input vector
+// ColVector<double> LSTMcell::zero;
+// RowVector<double> LSTMcell::d_dg;
 
-void LSTMcell::static_initializer(int ss, int xx){
-  n_s = ss; // state dimension
-  n_x = xx; // input dimension
-  d_dg.reset(n_s);
-  zero.reset(n_s);
-  for(int i = 0;i < n_s;i++)zero[i] = 0;
-}
+// void LSTMcell::static_initializer(int ss, int xx){
+//   n_s = ss; // state dimension
+//   n_x = xx; // input dimension
+//   d_dg.reset(n_s);
+//   zero.reset(n_s);
+//   for(int i = 0;i < n_s;i++)zero[i] = 0;
+// }
 
-double LSTMcell::sigma(double x){return 1/(1+exp(-x));}
+// double LSTMcell::sigma(double x){return 1/(1+exp(-x));}
 
-ColVector<double> LSTMcell::squash(ColVector<double> x){
-  for(int i = 0;i < x.nrows();i++)x[i] = sigma(x[i]);
-  return x;
-}
 
-ColVector<double> LSTMcell::bulge(ColVector<double> x){
-  for(int i = 0;i < x.nrows();i++) x[i] =2*x[i]-1;
-  return x;
-}
-
-void Gate::reset(RowVector<Matrix<double>> W0){
-  assert(W0.nrows() == 3 && W0.ncols() == 4);
+void Gate::reset(Matrix<Matrix<double>>& W0, int gn){
+  gate_no = gn;
   W = W0; // shallow copy NOTE: W0 will get updated each iteration
   //  cout <<"Gate reset: W:\n"<<W;
   for(int i = 0;i < 2;i++){
-    for(int j = 0;j < 3){
-      assert(W(i,j).ncols() == LSTMcell::n_s);
-      assert(W(2,j).ncols() == LSTMcell::n_x);
-    }
+    assert(W[i].ncols() == LSTMcell::n_s);
   }
-  g.reset(LSTMcell::n_s);
+  assert(W[2].ncols() == LSTMcell::n_x);
+  g.reset(4);
   dg_dz.reset(3);
   dg_dW.reset(3);
   for(int k = 0;k < 3;k++){
@@ -50,20 +39,21 @@ void Gate::reset(RowVector<Matrix<double>> W0){
   }
 }
 
-ColVector<double> Gate::operator()(int j, RowVector<ColVector<double>>& z){
-  // j is the gate number
-  ColVector<double>& v = z[0];
-  ColVector<double>& s = z[1];
-  ColVector<double>& x = z[2];
+ColVector<double> Gate::operator()
+  (RowVector<ColVector<double>>& z, ColVector<double>& x){
+  int j = gate_no;
+  ColVector<double>& v = z[0]; // readout from previous cell
+  ColVector<double>& s = z[1]; // state from previous cell
 
   g = W(0,j)*v + W(2,j)*x;
-  if(j > 0) g += W(1,j)*s;
-  //  cout << "g: "<<g;
-  for(int k = 0;k < W.dim();k++){
+  if(gate_no > 0) g += W(1,j)*s; // apply weights to the input
+  return squash(g);
+  // pre-compute stuff for backward pass
+  for(int k = 0;k < 3;k++){
     for(int i = 0;i < g.nrows();i++){
-      double d_sigma_i = LSTMcell::sigma(g[i])*(1-LSTMcell::sigma(g[i]));
+      double d_sigma_i = sigma(g[i])*(1 - sigma(g[i]));
       for(int j = 0;j < W[k].ncols();j++){
-        dg_dw[k](i,j) = d_sigma_i*W[k](i,j);
+        dg_dz[k](i,j) = d_sigma_i*W[k](i,j);
         dg_dW[k](i,j) = d_sigma_i*w[k][j];
       }
     }
@@ -74,13 +64,15 @@ ColVector<double> Gate::operator()(int j, RowVector<ColVector<double>>& z){
 
 
 
-void LSTMcell::reset(LSTMcell* pc, LSTMcell* nc, Matrix<Matrix<double>> W0){
-  assert(W0.nrows() == 4 && W0.ncols() == 3);
+void LSTMcell::reset(LSTMcell* pc, LSTMcell* nc,
+                     Matrix<Matrix<double>>& W0){
+  assert(W0.nrows() == 3 && W0.ncols() == 4);
   gate.reset(4);
-  RowVector<Matrix<double>> R(3);
-  for(int i = 0;i < 4;i++){
-    R = W0.slice(i,0,1,3);
-    gate[i].reset(R);
+  Array<Matrix<double> R(3);
+
+  for(int j = 0;j < 4;j++){
+    for(int i = 0;i < 3;i++) R[i] = W0(i,j); 
+    gate[j].reset(R,j);
   }
   w.reset(3);
   w[0].reset(n_s);
@@ -97,25 +89,12 @@ void LSTMcell::reset(LSTMcell* pc, LSTMcell* nc, Matrix<Matrix<double>> W0){
 
 void printmat(Matrix<double>& M){cout << M;}
 
-void LSTMcell::forward_step(ColVector<double>& x){
-  w[2].copy(x); // save for backward step
-  assert(prev_cell != nullptr);
-  w[0].copy(prev_cell->w[0]);
-  w[1].copy(prev_cell->w[1]);
-  //cout << "\ngate[0].W:\n"<<gate[0].W;
-  gate[0](w);
-  LSTMcell::bulge(gate[0].g); // convert to tanh(2x);
-  //cout << "\ngate[1].W:\n"<<gate[1].W;
-  gate[1](w);
-  //cout << "\ngate[2].W:\n"<<gate[2].W;
-  gate[2](w);
-  w[1] = (gate[0].g&gate[1].g) + (w[1]&gate[2].g); // update the state
-  //cout << "\ngate[3].W:\n"<<gate[3].W;
-  gate[3](w); 
-  r = bulge(squash(w[1])); // tanh(s/2)
-  w[0] = r&gate[3].g;
-  //cout << "new v: "<<v<<endl;
+void forward_step(Array<ColVector<double>>& z, ColVector<double>& x){
+  z[1] = gate[2](z,x)&z[1] + gate[0](z,x)&gate[1](z,x);
+  z[0] = gate[3](z,x)&bulge(z[1]);
 }
+
+
 
 // void LSTMcell::backward_step(RowVector<double>& dE_dv){
 //   assert(next_cell != nullptr && prev_cell != nullptr);

@@ -12,62 +12,93 @@
 using namespace std;
 
  
+double sigma(double u){return 1/(1+exp(-u));}
+ColVector<double> squash(ColVector<double>& x){
+  for(int i = 0;i < x.nrows();i++)x[i] = sigma(x[i]);
+  return x;
+}
+
+ColVector<double> bulge(ColVector<double> x){
+  for(int i = 0;i < x.nrows();i++) x[i] =2*x[i]-1;
+  return x;
+}
 
 struct Gate {
-  /* A gate is just the function g = sigma(W_v*v + W_s*s + W_x*x). The products are matrix*vector products.
-   * It is called a gate because g is component-wise multiplied by an information signal z = (v,s,or x)
-   * which modifies the amplitude of z.  So a component of g near 1 lets most of the corresponding
-   * component of z pass through, while a value near zero blocks most of that component.
+  /* A gate is just the function sigma(g(v,s,x)) where 
+   * sigma(g) = 1/(1+exp(-g)), g(v,s,x) is the affine function 
+   * g = W_v*v + W_s*s + W_x*x + b, where v = previous cell readout, 
+   * s =  previous cell state, and x = current cell input.
+   * In the special case gate_no = 0, there is no s input and sigma
+   * is replaced by 2*sigma - 1. 
+   * It is called a gate because its output modulates some information 
+   * signal z by component-wise multiplication.  So a gate component 
+   * near 1 lets most of the corresponding component of z pass through, 
+   * while a value near zero blocks most of that component.
    
-   * The gate also operates in back-propagation mode.  In this mode, the input is dE/dg where E is some
-   * sort of error signal.  The gate then computes dg/dW_i and dg/dz_i which are then multiplied by dE/dg
-   * to get dE/dW_i for input to the parameter correction logic, and dE/dz_i for further back-propogation
-   * to earlier gates and cells.
+   * The gate also operates in back-propagation mode where input and 
+   * output are reversed.  In this mode, the input is dE/dg where E is 
+   * some sort of error signal.  The gate then computes d(sigma)/dg,
+   * dg/dW_i (i = 0,1,2) and dg/dz_i (i = 0,1)which then multiply dE/dg 
+   * to get dE/dW_i for input to the parameter correction logic, and 
+   * dE/dz_i for further back-propogation  to earlier gates and/or cells.
+   * Note that dE/dx is not computed because there is no back-progation.
    */
 
-  Matrix<Matrix<double>> W;
+  int gate_no;
+  Array<ColVector<double>> b;
+  Array<Matrix<double>> W;
+  /* Each pair W[i],b[i] (i =0,1,2) is a set of weights.  There are four
+   * separate such sets in an LSTM cell, but the first gate in a cell is 
+   * special because it doesn't have a state input. The same weights are
+   * repeated in each cell.
+   */
   ColVector<double> g;
   RowVector<Matrix<double>> dg_dz;
   RowVector<Matrix<double>> dg_dW;
  public:
   Gate(void){}
-  void reset(Matrix<Matrix<double>> W0);
-  ColVector<double> operator()(RowVector<ColVector<double>>& z);
+  void reset(Array<Matrix<double>> W0, int gn);
+  ColVector<double> operator()(RowVector<ColVector<double>>& z,
+                               int gate_no);
 };
 
 struct LSTMcell {
-  /* A cell consists of four gates.  cell[0] is special since a) the input vector s is always zero,
-   * and b) the output g is modified to 2*g-1. 
-   * The parameters are 11 matrices arranged in a 3x4 grid W.  W(i,j) 
+   /* The parameters are 11 matrices arranged in a 3x4 grid W.  W(i,j) 
    * (i = 0,1,2; j = 0,1,2,3) is the 
-   * matrix which multiplies input vector i(0=v,1=s,2=x) to get gate j 
-   * (j = 1,2,3).  W(1,0) is a dummy matrix.
+   * matrix which multiplies input vector i(0=v,1=s,2=x) in gate j 
+   * (j = 1,2,3).  W(1,0) is a dummy matrix because gate 0 has no state
+   * input.
+   *
    * n_s (resp. n_x) is the dimension of the state (s) and readout (v) vectors (resp. input vector x).  Note that the actual number of state 
    * (resp. input) variables is n_s-1 (resp. n_x-1) because component 0
-   * of each type is has constant value 1 to provide for bias.   
-   * W(i,2) has dimension n_x by n_s (0<=i<=3).  All other parameter matrices have dimension n_s by n_s.  
-   * The LSTM itself is a linear array of cells. Each one takes a separate input vector x and the readout and state
-   * vectors from the previous cell as the input to gates 0-3. 
-   * All cells use and update the same 11 parameter matrices.
-   * There are two outputs:
-   * 1. current state, a sum of the gated previous state and a gated 
-   * non-linear combination of input and last cell output
-   * 2. readout, a squashed and gated version of the current state
+   * of each type is has constant value 1 (or 0) to provide for bias or
+   * no bias
+   *.    
+   * W(i,2) has dimension n_x by n_s (0<=i<=3).  All other parameter 
+   * matrices have dimension n_s by n_s.  The first row of each parameter
+   * matrix is (1,0,..0) to preserve the leading value 1 of each signal.
+   * The readout signal is basically just an externalized state signal.
+   * It typically might be converted to a probability (or weight)vector 
+   * if the LSTM is coupled to some standard output distro (e.g. gaussian)
+   *
+   * The LSTM itself is conceptually a linear array of cells, but in
+   * implementation, we iterate calls to the same code with input from
+   * the previous call. Each call takes a 
+   * separate input vector x and the readout and state
+   * vectors from the previous call as the input to gates 0-3. 
+   * There are two outputs from the current cell which are also the
+   * inputs to the next cell.:
+   * 1. current state (s), a sum of the gated previous state output and a 
+   * gated non-linear combination of input and last cell output
+   * 2. readout (v), a squashed and gated version of the current state
    */
   friend class LSTM;
   friend class Gate;
-  static int n_s; // dimension of the state and output vectors
-  static int n_x; // dimension of the input vector
-  static ColVector<double> zero;
-  static RowVector<double> d_dg; // temporary storage during backprop
-  Array<Gate> gate;
-  // ColVector<double>& s; // state
-  // ColVector<double>& v; // readout
-  ColVector<double> r; // tanh(s/2)
-  RowVector<ColVector<double>> z;
-  LSTMcell* prev_cell;
-  LSTMcell* next_cell;
-  // ColVector<double>& input;
+  int n_s; // dimension of the state and output vectors
+  int n_x; // dimension of the input vector
+  //  static ColVector<double> zero;
+  //  static RowVector<double> d_dg; // temporary storage during backprop
+  Array<Gate> gate; // four copies of struct Gate
   
   // Backprop variables: input from next cell, output to prev cell
   RowVector<double> d_ds; // d(forward error)/d(state)
@@ -75,15 +106,13 @@ struct LSTMcell {
 
 
   LSTMcell(void) {}
-  void reset(LSTMcell* pc, LSTMcell* nc, Matrix<Matrix<double>> W0);
-  void forward_step(ColVector<double>& x);
-  void backward_step(RowVector<double>& dE_dv); // input is d(this_cell error)/d(readout)
-  const ColVector<double>& readout(void){return w[0];}
-
-  static void static_initializer(int ss, int xx);
-  static double sigma(double x);
-  static ColVector<double> squash(ColVector<double> x);
-  static ColVector<double> bulge(ColVector<double> x);
+  void reset(Matrix<Matrix<double>>& W0); // weights for all four gates
+  void forward_step(Array<ColVector<double>>& z, ColVector<double>& x);
+  void backward_step(Array<RowVector<double>>& dE_dz);
+  /* forward input/output is z = (v,s) and (input only) x
+   * backward input/output is dE/dv,dE/ds
+   * in addition, the matrix dE/dW is updated on each call
+   */
 };
 
 struct LSTM {
@@ -91,9 +120,9 @@ struct LSTM {
   int ncells;
   //  int n_s;
   //  int n_x;
-  Matrix<double> data; // include an extra row set to 1.0 if you want a bias term
+  Matrix<double> data; 
   Matrix<double> output;
-  Matrix<Matrix<double>> parameters; //4x3 grid of parameter matrices
+  Matrix<Matrix<double> > parameters; //4x3 grid of parameter matrices
 public:
   LSTM(Matrix<double>& d, Matrix<double>& o, Matrix<Matrix<double>>& p);
   void train(int max_iters, double pct=1.0, double learn = .1, double eps = 1.0e-8);
