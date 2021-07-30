@@ -9,3 +9,25 @@ Changed Gate.operator() to accept a RowVector<ColVector<double>> instead of thre
 
 Wed 21 Jul 2021 01:02:38 PM PDT
 Restarting work on LSTM.  Changed access to ssh.
+
+Wed 28 Jul 2021 02:25:25 PM PDT
+There's been a lot of back and forth on how to do backprop.  Here's where
+I'm at now:
+
+1. Each weight matrix is of size (n_s, n_s+1) or (n_x,n_x+1).  Column 0
+is the vector of biases.  The v,s, and x vectors ("signals") are all
+augmented by a 0-component equal to 1 so they are of dimension n_s+1,n_s+1,
+n_x +1 respectively, while the product is of dimention n_s or n_x. 
+
+Note that the matrix vector products are only used to element-wise multiply
+the signal components of index > 0, i.e. the weights just determine gating
+values.
+
+2. The LSTM class maintains an Array of LSTMcells. Each LSTMcell maintains
+an Array of 4 Gates as per the diagram.  Each Gate has a forward_step and a
+backward_step.  The forward step saves the v,s input vectors and the g
+output vector.  These are all used by the backward step. 
+
+Fri 30 Jul 2021 03:55:34 PM PDT
+I now have preliminary code for Gate::f_step, Gate::b_step, LSTM_cell::
+forward/backward step.  

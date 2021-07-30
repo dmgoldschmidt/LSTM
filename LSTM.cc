@@ -4,110 +4,86 @@
 #include "LSTM.h"
 using namespace std;
 
-//static variables defined at global scope
-
-// int LSTMcell::n_s; // dimension of the state and output vectors
-// int LSTMcell::n_x; // dimension of the input vector
-// ColVector<double> LSTMcell::zero;
-// RowVector<double> LSTMcell::d_dg;
-
-// void LSTMcell::static_initializer(int ss, int xx){
-//   n_s = ss; // state dimension
-//   n_x = xx; // input dimension
-//   d_dg.reset(n_s);
-//   zero.reset(n_s);
-//   for(int i = 0;i < n_s;i++)zero[i] = 0;
-// }
-
-// double LSTMcell::sigma(double x){return 1/(1+exp(-x));}
-
-
-void Gate::reset(Matrix<Matrix<double>>& W0, int gn){
-  gate_no = gn;
-  W = W0; // shallow copy NOTE: W0 will get updated each iteration
-  //  cout <<"Gate reset: W:\n"<<W;
-  for(int i = 0;i < 2;i++){
-    assert(W[i].ncols() == LSTMcell::n_s);
-  }
-  assert(W[2].ncols() == LSTMcell::n_x);
-  g.reset(4);
-  dg_dz.reset(3);
-  dg_dW.reset(3);
-  for(int k = 0;k < 3;k++){
-    dg_dz[k].reset(W[k].nrows(),W[k].ncols());
-    dg_dW[k].reset(W[k].nrows(),W[k].ncols());
-  }
-}
-
-ColVector<double> Gate::operator()
-  (RowVector<ColVector<double>>& z, ColVector<double>& x){
+ColVector<double> Gate::f_step(ColVector<double>& v0, //readout
+                                     ColVector<double>& s0, // state
+                                     ColVector<double>& x0) // input
+{
   int j = gate_no;
-  ColVector<double>& v = z[0]; // readout from previous cell
-  ColVector<double>& s = z[1]; // state from previous cell
-
-  g = W(0,j)*v + W(2,j)*x;
-  if(gate_no > 0) g += W(1,j)*s; // apply weights to the input
-  return squash(g);
-  // pre-compute stuff for backward pass
-  for(int k = 0;k < 3;k++){
-    for(int i = 0;i < g.nrows();i++){
-      double d_sigma_i = sigma(g[i])*(1 - sigma(g[i]));
-      for(int j = 0;j < W[k].ncols();j++){
-        dg_dz[k](i,j) = d_sigma_i*W[k](i,j);
-        dg_dW[k](i,j) = d_sigma_i*w[k][j];
-      }
-    }
+  v = v0.copy(); // save inputs for b_step
+  s = s0.copy(); // ditto
+  x = x0.copy();
+  g = W(0,j)*v + W(2,j)*x; 
+  if(j > 0){
+    g += W(1,j)*s; // apply weights to the input
+    return g  = squash(g);  // and save it for backward_step
   }
-  return LSTMcell::squash(g);
+  else return g = augment(bulge(g)); // gate 0 only
+
+}
+
+void Gate::b_step(RowVector<double>& dE_dg)
+/* Update partials w.r.t model weights, readout and state signals
+ * NOTE: dE/d(anything) is an unaugmented row vector! 
+ * dE_dW(i,j) needs to be transposed before the final gradient is 
+ * computed. 
+ */
+
+{
+
+  int j = gate_no;
+
+  for(int i = 0;i < n_s;i++)dE_dg[i] = dE_dg[i]*g[i]*(1-g[i]);
+  dE_dv += dE_dg*no_bias[0];
+  if(gate_no > 0) dE_ds += dE_dg*no_bias[1];
+  /* dE_dv and dE_ds are back_propagated to the previous gate or cell. 
+   * Current values are read by LSTMcell at input.
+   * Next, we update the partials wrt model parameters
+   */
+  // update weight gradients (v,s,x were saved by f_step)
+  dE_dW(0,j) += v*dE_dg; 
+  if(j > 0)dE_dW(1,j) += s*dE_dg;
+  dE_dW(2,j) += x*dE_dg;
+}
+
+/*********************** begin LSTMcell here */
+
+inline void throttle(ColVector<double>& x, ColVector<double>& g){
+  // x may be augmented or not
+  ColVector<double> y = x.copy();
+  int n = (x.nrows() == g.nrows() ? 0:1); 
+  for(int i = 0;i < g.nrows();i++) y[i+n] = x[i+n]*g[i];
+  return y;
+}
+
+void LSTMcell::forward_step(Array<ColVector<double>>& z,
+                             ColVector<double>& x){
+  ColVector<double>& v = z[0];
+  ColVector<double>& s = z[1];
+   
+  s = throttle(s,gate[2].f_step(z,x)) +
+    augment(throttle(gate[0].f_step(z,x),gate[1].f_step(z,x)));
+  r = augment(bulge(s));
+  v = throttle(r,gate[3].f_step(z,x));
 }
 
 
 
+void LSTMcell::backward_step(RowVector<double>& dE_n){
+  dE_dv += dE_n; // combine local gradient
+  dE_dr = throttle(dE_dv,cell[3].g);
+  for(i = 0;i < n_s;i++)dE_ds[i] += dE_dr[i]*(1-r[i]*r[i])/2;
+  gate[3].b_step(throttle(dE_dv,r)); // r was saved during the forward step
 
-void LSTMcell::reset(LSTMcell* pc, LSTMcell* nc,
-                     Matrix<Matrix<double>>& W0){
-  assert(W0.nrows() == 3 && W0.ncols() == 4);
-  gate.reset(4);
-  Array<Matrix<double> R(3);
-
-  for(int j = 0;j < 4;j++){
-    for(int i = 0;i < 3;i++) R[i] = W0(i,j); 
-    gate[j].reset(R,j);
-  }
-  w.reset(3);
-  w[0].reset(n_s);
-  w[1].reset(n_s);
-  w[2].reset(n_x);
-  r.reset(n_s);
-  //  input.reset(n_x);
+  // OK, now dE_ds, dE_dv, and dE_dW(i,3) are updated past gate 3.
+  dE_ds1 = dE_ds.copy();
+  // save for gate[1] backprop before pushing through the next operation
+  dE_ds = throttle(dE_ds,gate[2].g); 
+  gate[2].b_step(throttle(dE_ds,gate[2].s));
   
-  prev_cell = pc;
-  next_cell = nc;
-  d_ds.reset(n_s);
-  d_dv.reset(n_s);
+  // OK, now we're past gate[2]
+  gate[1].b_step(throttle(dE_ds1,gate[0].g));
+  gate[0].b_step(throttle(dE_ds1,gate[1].g));
 }
-
-void printmat(Matrix<double>& M){cout << M;}
-
-void forward_step(Array<ColVector<double>>& z, ColVector<double>& x){
-  z[1] = gate[2](z,x)&z[1] + gate[0](z,x)&gate[1](z,x);
-  z[0] = gate[3](z,x)&bulge(z[1]);
-}
-
-
-
-// void LSTMcell::backward_step(RowVector<double>& dE_dv){
-//   assert(next_cell != nullptr && prev_cell != nullptr);
-//   d_dv = next_cell->d_dv + dE_dv;  // input from local error and backprop
-//   d_dg = d_dv&r;
-  
-//   for(int k = 0;k < 3;k++){
-//     (d_dg*gate[3].dg_dW[k]
-
-
-
-
-// }
   
 LSTM::LSTM(Matrix<double>& d, Matrix<double>& o, Matrix<Matrix<double>>& p) :
   data(d),output(o),parameters(p) {
