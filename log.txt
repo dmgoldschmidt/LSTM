@@ -30,4 +30,6 @@ output vector.  These are all used by the backward step.
 
 Fri 30 Jul 2021 03:55:34 PM PDT
 I now have preliminary code for Gate::f_step, Gate::b_step, LSTM_cell::
-forward/backward step.  
+forward/backward step.
+
+testing ssh with github
