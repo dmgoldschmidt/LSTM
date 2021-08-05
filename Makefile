@@ -91,12 +91,10 @@ MarketHMM: MarketHMM.cc HMM.o GetOpt.o util.o Array.h Matrix.h Gaussian.h Awk.o 
 gzstream/gzstream.o -lz
 qr_reg: qr_reg.cc QRreg.o GetOpt.o util.o
 	g++ $(CFLAGS) -o qr_reg qr_reg.cc QRreg.o util.o GetOpt.o 
-LSTM.o: LSTM.h LSTM.cc $(INC)/Matrix.h
+LSTM.o: LSTM.h LSTM.cc $(INC)/Matrix.h $(INC)/Array.h
 	g++ $(CFLAGS) -c LSTM.cc
-test_LSTM: LSTM.o LSTM_1.o test_LSTM.cc util.o $(INC)/Matrix.h GetOpt.o
-	g++ $(CFLAGS) -o test_LSTM test_LSTM.cc LSTM.o LSTM_1.o util.o GetOpt.o
-LSTM_1.o: LSTM_1.h LSTM_1.cc $(INC)/Matrix.h
-	g++ $(CFLAGS) -c LSTM_1.cc
-test_LSTM_1: LSTM_1.o test_LSTM_1.cc util.o $(INC)/Matrix.h GetOpt.o
-	g++ $(CFLAGS) -o test_LSTM_1 test_LSTM_1.cc LSTM_1.o util.o GetOpt.o
+test_LSTM: LSTM.o test_LSTM.cc util.o $(INC)/Matrix.h $(INC)/Array.h GetOpt.o
+	g++ $(CFLAGS) -o test_LSTM test_LSTM.cc LSTM.o util.o GetOpt.o
+
+
 
