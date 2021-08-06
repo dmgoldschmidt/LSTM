@@ -32,4 +32,6 @@ Fri 30 Jul 2021 03:55:34 PM PDT
 I now have preliminary code for Gate::f_step, Gate::b_step, LSTM_cell::
 forward/backward step.
 
-testing ssh with github
+Thu 05 Aug 2021 04:59:43 PM PDT
+Clean compile for LSTM.cc and test_LSTM.cc (one Cell only, no LSTM itself).
+
