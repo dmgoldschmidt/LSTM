@@ -4,6 +4,14 @@
 #include "LSTM.h"
 using namespace std;
 
+void work_around(Matrix<double>& A, Matrix<double>&B, Matrix<double>& C){// A += B*C
+  for(int i = 0;i < A.nrows();i++){
+    for(int j = 0;j < A.ncols();j++){
+      for(int k = 0;k < B.ncols();k++) A(i,j) += B(i,k)*C(k,j);
+    }
+  }
+}
+
 ColVector<double> augment(ColVector<double>& x){
    ColVector<double> y(x.nrows() + 1);
    y[0] = 1.0;
@@ -25,8 +33,8 @@ ColVector<double>& bulge(ColVector<double>& x, int n){ // n = 0 if unaugmented, 
 
 std:: ostream& operator <<(std::ostream& os, Cell& c){
   os << "dim(state): "<<c.n_s<<", dim(input): "<<c.n_x<<endl;
-  os << "readout: "<<c.v.Tr()<<", state: "<<c.s.Tr()<<endl;
-  os << "dE_dv: "<<c.dE_dv<<", dE_ds: "<<c.dE_ds<<endl;
+  os << "readout: "<<c.v.Tr()<<"state: "<<c.s.Tr()<<endl;
+  os << "dE_dv: "<<c.dE_dv<<" dE_ds: "<<c.dE_ds<<endl;
   os << "W:\n"<<c.W;
   os << "dE_dW:\n"<<c.dE_dW;
   return os;
@@ -69,11 +77,11 @@ void Gate::b_step(RowVector<double>& dE_dg)
    * Next, we update the partials wrt model parameters
    */
   // update weight gradients (v,s,x were saved by f_step)
-  dE_dW(0,j) += v*dE_dg; 
-  if(j > 0)dE_dW(1,j) += s*dE_dg;
-  dE_dW(2,j) += x*dE_dg;
+  work_around(dE_dW(0,j),v,dE_dg);// dE_dW(0,j)+=v*dE_dg; 
+  if(j > 0) work_around(dE_dW(1,j),s,dE_dg);//dE_dW(1,j) += s*dE_dg;
+  work_around(dE_dW(2,j),x,dE_dg);//  dE_dW(2,j) += x*dE_dg;
 }
-
+ 
 /*********************** begin Cell code here */
 
 inline ColVector<double> throttle(ColVector<double>& x, ColVector<double>& g){

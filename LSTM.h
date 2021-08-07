@@ -83,9 +83,10 @@ struct Gate {
     for(int i = 0;i < 2;i++) no_bias[i] = W(i,gn).slice(0,1,n_s,n_s);
     no_bias[2] = W(2,gn).slice(0,1,n_s,n_x);
   }
+  
   Gate& operator=(const Gate& gg){
-    gate_no = gg.gate_no; n_s = gg.n_s; n_x = gg.n_x, W = gg.W; v = gg.v; s = gg.s;
-    x = gg.x; g = gg.g; no_bias = gg.no_bias;
+    gate_no = gg.gate_no; n_s = gg.n_s; n_x = gg.n_x; W = gg.W; dE_dW = gg.dE_dW;
+    dE_dv = gg.dE_dv; dE_ds = gg.dE_ds; v = gg.v; s = gg.s;x = gg.x; g = gg.g; no_bias = gg.no_bias;
     return *this;
   }
   
@@ -146,6 +147,8 @@ struct Cell {
     v(v0), s(s0), W(W0), dE_dW(dE_dW0), dE_dv(dE_dv0), dE_ds(dE_ds0), gate(4)
   {
     assert(W0.nrows() == 3 && W0.ncols() == 4);
+    n_s = W(0,0).nrows();
+    n_x = W(0,2).ncols()-1;
     for(int j = 0;j < 4;j++){
       gate[j] = Gate(W0,dE_dW0,dE_dv0,dE_ds0,j);
     }
