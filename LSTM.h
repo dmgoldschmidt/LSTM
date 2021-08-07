@@ -150,7 +150,8 @@ struct Cell {
     n_s = W(0,0).nrows();
     n_x = W(0,2).ncols()-1;
     for(int j = 0;j < 4;j++){
-      gate[j] = Gate(W0,dE_dW0,dE_dv0,dE_ds0,j);
+      Gate temp(W0,dE_dW0,dE_dv0,dE_ds0,j);
+      gate[j] = temp;
     }
     r.reset(n_s+1);
     dE_dr.reset(n_s);
