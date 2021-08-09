@@ -39,80 +39,90 @@ struct Gate {
    * dE/dz_i for further back-propogation  to earlier gates and/or cells.
    */
 
-  int gate_no;
+  int gn;
   int n_s; // no. of state parameters
   int n_x; // no. of input parameters
   
-  Matrix<Matrix<double>> W;
-  /* Each W(i,j) (i =0,1,2, j = 0,1,2,3)) is an n_k x n_k+1 matrix of 
-   * weights, where k = (s.s,x). The first column of each matrix is bias.  
+  Matrix<double> W_v;
+  Matrix<double> W_s;
+  Matrix<double> W_x;
+  /* Each W_k is an n_k x n_k+1 matrix of 
+   * weights and biases, where k = (s,s,x). The first column of each matrix is bias.  
    * This works because the input signals have a constant 1 in component 0. 
-   * NOTE: W(1,0) is not used because gate 0 doesn't have a state input. 
+   * NOTE: gate 0 doesn't use W_s because it has no state input. 
    */
-  Matrix<Matrix<double>> dE_dW; // weight gradient
-  RowVector<double> dE_dv; // partials w.r.t readout
-  RowVector<double> dE_ds; // partials w.r.t state 
-  Array<Matrix<double>> no_bias; // slice of each W(i,j) to remove bias
+  Matrix<double> dE_dW_v, dE_dW_s, dE_dW_x; // weight/bias gradients (slices of dE_dW)
+  RowVector<double> dE_dv; // partials w.r.t readout for backprop
+  RowVector<double> dE_ds; // partials w.r.t state for backprop
+  Matrix<double> U_v, U_s, U_x; // slice of each W_k to remove bias
 
-  // the following three vectors are saved for backprop
-  ColVector<double> v; // readout (saved for backprop
+  // the following three vectors are input, modified, and saved for backprop
+  ColVector<double> v; // readout 
   ColVector<double> s; // state
   ColVector<double> x; // cell input
-  ColVector<double> g; // gate output
+  
+  ColVector<double> g; // gate output (saved for backprop
  public:
   Gate(void){}
-  Gate(Matrix<Matrix<double>>& W0, // Model weights & biases
-       /* The next four items are stored in LSTM and referenced everywhere
-        *else.  They are updated by each call to Gate::b_step.
-        */
-       Matrix<Matrix<double>>& dE_dW0,
-       RowVector<double>& dE_dv0,
-       RowVector<double>& dE_ds0,
-       int gn) : W(W0), dE_dW(dE_dW0), dE_dv(dE_dv0), dE_ds(dE_ds0){
-    gate_no = gn;
-    n_s = W(0,0).nrows();
-    n_x = W(0,2).ncols()-1;
-    
+  void reset(Matrix<double>& W, // All model weights & biases
+             Matrix<double>& dE_dW, // All model gradients
+             RowVector<double>& dE_dv0, //backprop variables (shallow copied, updated, and saved)
+             RowVector<double>& dE_ds0,
+             int n_s0, int n_x0, int gn0) {
+    n_s = n_s0; n_x = n_x0; gn = gn0;
+    dE_dv = dE_dv0;
+    dE_ds = dE_ds0;
+
+    W_v = W.slice(0,gn*(n_s+1),n_s,n_s+1);
+    W_s = W.slice(n_s,gn*(n_s+1),n_s,n_s+1);
+    W_x = W.slice(2*n_s,gn*(n_x+1),n_s,n_x+1);
+
+    dE_dW_v = dE_dW.slice(0,gn*(n_s+1),n_s,n_s+1);
+    dE_dW_s = dE_dW.slice(n_s,gn*(n_s+1),n_s,n_s+1);
+    dE_dW_x = dE_dW.slice(2*n_s,gn*(n_x+1),n_s,n_x+1);
+
+    U_v = W_v.slice(0,1,n_s,n_s);
+    U_s = W_s.slice(0,1,n_s,n_s);
+    U_x = W_x.slice(0,1,n_s,n_x);
+
     // v,s,x,g are all saved for backprop
     v.reset(n_s+1); // component 0 = 1.0 to account for W(i,j)(i.0) = bias
     s.reset(n_s+1);
     x.reset(n_x+1);
     
     g.reset(n_s); 
-    no_bias.reset(3);
-    for(int i = 0;i < 2;i++) no_bias[i] = W(i,gn).slice(0,1,n_s,n_s);
-    no_bias[2] = W(2,gn).slice(0,1,n_s,n_x);
   }
   
-  Gate& operator=(const Gate& gg){
-    gate_no = gg.gate_no; n_s = gg.n_s; n_x = gg.n_x; W = gg.W; dE_dW = gg.dE_dW;
-    dE_dv = gg.dE_dv; dE_ds = gg.dE_ds; v = gg.v; s = gg.s;x = gg.x; g = gg.g; no_bias = gg.no_bias;
-    return *this;
-  }
+  // Gate& operator=(const Gate& gg){
+  //   gate_no = gg.gate_no; n_s = gg.n_s; n_x = gg.n_x; W = gg.W; dE_dW = gg.dE_dW;
+  //   dE_dv = gg.dE_dv; dE_ds = gg.dE_ds; v = gg.v; s = gg.s;x = gg.x; g = gg.g; no_bias = gg.no_bias;
+  //   return *this;
+  // }
   
   ColVector<double> f_step(ColVector<double>& v, ColVector<double>& s, ColVector<double>& x);
   void b_step(RowVector<double>& dE_dg);
 };
 
 struct Cell {
-   /* The parameters are 11 matrices arranged in a 3x4 grid W.  W(i,j) 
-   * (i = 0,1,2; j = 0,1,2,3) is the 
-   * matrix which multiplies input vector i(0=v,1=s,2=x) in gate j 
-   * (j = 1,2,3).  W(1,0) is a dummy matrix because gate 0 has no state
-   * input.
+  /* A Cell consists of 4 Gates which basically apply affine maps (followed by a non-linear "squash")
+   * in series to the 3 signals v,s,x.  They are all "augmented" column vectors, meaning component 0
+   * is a constant 1.0 to account for bias (the affine additive).
    *
-   * n_s+1 (resp. n_x+1) is the dimension of the state (s) and readout (v) vectors (resp. input vector x).  
-   * Note that the actual number of state (resp. input) variables is n_s (resp. n_x) because component 0
-   * of each type is has constant value 1 (or 0) to provide for bias.
+   * The affine parameters are packed into a 3n_s x 4n Matrix<double> W, where n = max(n_s, n_x)+1 and
+   * n_s = no. of state & readout variables, n_x =no. of input variables.
+   * Each gate instance unpacks the appropriate slices of W into a set of 3 weight/bias matrices W_i 
+   * which multiply augmented vectors v, s, or x thereby applying an affine map.  
+   * gate 0 has no state input so there are actually only 11 affine matrices.
    *
-   * W(i,2) has dimension n_s by n_x+1 (0<=i<=3).  All other parameter 
-   * matrices have dimension n_s by n_s+1.  
-   *
-   * The readout signal is basically just an externalized state signal.
+   * The readout signal v is basically just an externalized state signal.
    * It typically might be converted to a probability (or weight)vector 
    * if the LSTM is coupled to some standard output distro (e.g. gaussian)
    *
-   * The LSTM itself is a linear array of identical Cells, wired up in series.
+   * The LSTM user converts v to an estimated target signal, and in training mode computes an error
+   * gradient from the ground truth which is fed back to the cell.
+   * 
+   * The LSTM itself is a linear array of identical Cells, wired up in series.  The Cells are fed input
+   * from consecutive terms of a time series.
    * Each Cell takes a separate input vector x and the readout and state
    * vectors from the previous call as the input to gates 0-3. 
    * There are two outputs from the current Cell which are also the
@@ -128,8 +138,8 @@ struct Cell {
   // The following six items are defined in LSTM and updated by Cell/Gate
   ColVector<double> v;
   ColVector<double> s;
-  Matrix<Matrix<double>> W;
-  Matrix<Matrix<double>> dE_dW;
+  Matrix<double> W;
+  Matrix<double> dE_dW;
   RowVector<double> dE_dv;
   RowVector<double> dE_ds;
   
@@ -138,30 +148,29 @@ struct Cell {
   RowVector<double> dE_dg;
   Cell(void){}
   Cell(
-       ColVector<double>& v0,
+       int n_s0, // no. of state parameters
+       int n_x0, // no. of input parameters
+       ColVector<double>& v0, 
        ColVector<double>& s0,
-       Matrix<Matrix<double>>& W0,
-           Matrix<Matrix<double>>& dE_dW0,
-           RowVector<double>& dE_dv0,
-           RowVector<double>& dE_ds0) :
-    v(v0), s(s0), W(W0), dE_dW(dE_dW0), dE_dv(dE_dv0), dE_ds(dE_ds0), gate(4)
+       Matrix<double>& W0,
+       Matrix<double>& dE_dW0,
+       RowVector<double>& dE_dv0,
+       RowVector<double>& dE_ds0) :
+    n_s(n_s0), n_x(n_x0), v(v0), s(s0), W(W0), dE_dW(dE_dW0), dE_dv(dE_dv0), dE_ds(dE_ds0), gate(4)
   {
-    assert(W0.nrows() == 3 && W0.ncols() == 4);
-    n_s = W(0,0).nrows();
-    n_x = W(0,2).ncols()-1;
+    assert(W0.nrows() >= 3*n_s && W0.ncols() >= 4*(max(n_s,n_x)+1));
     for(int j = 0;j < 4;j++){
-      Gate temp(W0,dE_dW0,dE_dv0,dE_ds0,j);
-      gate[j] = temp;
+      gate[j].reset(W0,dE_dW0,dE_dv0,dE_ds0,n_s,n_x,j);
     }
     r.reset(n_s+1);
     dE_dr.reset(n_s);
     dE_dg.reset(n_s);
   }
   void forward_step(ColVector<double>& x);
-  void backward_step(RowVector<double>& dE_n);
-  /* forward input/output is z = (v,s) and (input only) x
-   * backward input/output is dE/dz = (dE/dv,dE/ds)
-   * in addition, the matrix dE/dW is updated on each call
+  void backward_step(RowVector<double>& dEn_dv);
+  /* forward input is v,s and x, output is v,s.
+   * backward input is dE_n/dv, dE/dv,dE/ds
+   * in addition, the matrix dE/dW is updated at each backward_step
    */
 };
 

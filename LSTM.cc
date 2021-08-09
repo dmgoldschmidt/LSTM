@@ -4,7 +4,7 @@
 #include "LSTM.h"
 using namespace std;
 
-void work_around(Matrix<double>& A, Matrix<double>&B, Matrix<double>& C){// A += B*C
+void work_around(Matrix<double> A, Matrix<double> B, Matrix<double> C){// A += B*C
   for(int i = 0;i < A.nrows();i++){
     for(int j = 0;j < A.ncols();j++){
       for(int k = 0;k < B.ncols();k++) A(i,j) += B(i,k)*C(k,j);
@@ -45,13 +45,12 @@ ColVector<double> Gate::f_step(ColVector<double>& v0, //readout
                                      ColVector<double>& s0, // state
                                      ColVector<double>& x0) // input
 {
-  int j = gate_no;
   v = v0.copy(); // save inputs for b_step (backprop)
   s = s0.copy(); // ditto
   x = x0.copy();
-  g = W(0,j)*v + W(2,j)*x; 
-  if(j > 0){
-    g += W(1,j)*s; // apply weights to the input
+  g = W_v*v + W_x*x; //apply affine maps to w,x  
+  if(gn > 0){ // and s except at gate 0
+    g += W_s*s; // apply weights to the input
     g  = squash(g);  // and save it for backward_step
   }
   else g = augment(bulge(g)); // gate 0 only
@@ -61,25 +60,24 @@ ColVector<double> Gate::f_step(ColVector<double>& v0, //readout
 void Gate::b_step(RowVector<double>& dE_dg)
 /* Update partials w.r.t model weights, readout and state signals
  * NOTE: dE/d(anything) is an unaugmented row vector! 
- * dE_dW(i,j) needs to be transposed before the final gradient is 
+ * dE_dW_k needs to be transposed before the final gradient is 
  * computed. 
  */
 
-{
+{ 
 
-  int j = gate_no;
-  double u = (j == 0 ? .5 : 1);
-  for(int i = 0;i < n_s;i++)dE_dg[i] = dE_dg[i]*g[i]*(1-g[i])*u;
-  dE_dv += dE_dg*no_bias[0];
-  if(gate_no > 0) dE_ds += dE_dg*no_bias[1];
+  double u = (gn == 0 ? .5 : 1);
+  for(int i = 0;i < n_s;i++)dE_dg[i] = dE_dg[i]*g[i]*(1-g[i])*u; // back up thru squash
+  dE_dv += dE_dg*U_v; // back up thru W_v (weights only!  bias has no effect here
+  if(gn > 0) dE_ds += dE_dg*U_s; // and W_s
   /* dE_dv and dE_ds are back_propagated to the previous gate or cell. 
    * Current values are read by Cell at input.
    * Next, we update the partials wrt model parameters
    */
-  // update weight gradients (v,s,x were saved by f_step)
-  work_around(dE_dW(0,j),v,dE_dg);// dE_dW(0,j)+=v*dE_dg; 
-  if(j > 0) work_around(dE_dW(1,j),s,dE_dg);//dE_dW(1,j) += s*dE_dg;
-  work_around(dE_dW(2,j),x,dE_dg);//  dE_dW(2,j) += x*dE_dg;
+  // update weight/bias gradients (v,s,x were saved by f_step)
+  dE_dW_v += (v*dE_dg).Tr(); 
+  if(gn > 0) dE_dW_s += (s*dE_dg).Tr();
+  dE_dW_x += (x*dE_dg).Tr();
 }
  
 /*********************** begin Cell code here */
@@ -113,8 +111,8 @@ void Cell::forward_step(ColVector<double>& x){ // v and s are Cell variables
 
 
 
-void Cell::backward_step(RowVector<double>& dE_dxn){
-  dE_dv += dE_dxn; // combine local gradient
+void Cell::backward_step(RowVector<double>& dEn_dv){
+  dE_dv += dEn_dv; // combine local gradient
   dE_dr = throttle(dE_dv,gate[3].g);
   for(int i = 0;i < n_s;i++)dE_ds[i] += dE_dr[i]*(1-r[i]*r[i])/2;
   dE_dg = throttle(dE_dv,r);

@@ -82,7 +82,7 @@ public:
       return;
     }
 #ifdef DEBUG
-      dump("MemoryBlock destructor(entry)");
+      dump("MemoryBlock destructor(entry)"); 
 #endif
     dec_ref_count();
     if(*ref_count <= 0){

@@ -35,3 +35,16 @@ forward/backward step.
 Thu 05 Aug 2021 04:59:43 PM PDT
 Clean compile for LSTM.cc and test_LSTM.cc (one Cell only, no LSTM itself).
 
+Sat 07 Aug 2021 03:45:54 PM PDT
+Hmm, I'm running into a big problem with dE_dW (a matrix of matrices).  Compiles, but segfaults
+with various bizarre results from gdb.  I'm thinking that there is some sort of bug in MemoryBlock
+which is somehow stepping on dynamic memory.  Anyway, I'm going to redesign W and dE_dW to be big matrices
+consisting the of concatenation of all 12 weight/bias matrices and their gradients.  Then in the gate
+initialization code (which I'm going to change from constructor to reset) I will define six matrices
+W_v, W_s, W_x and dE_dW_v, dE_dW_s, dE_dW_x as slices of the big matrix.  So the only matrices around
+will be Matrix<double>.  Someday when I have time, I will try to figure out what's wrong with MemoryBlock. 
+Note that W_v and W_s are n_s x (n_s+1) while W_x is n_s x (n_x+1). So W will be 4 x ( (3n_s x 2n_s+n_x + 3) )
+
+Mon 09 Aug 2021 01:47:02 PM PDT
+OK, I recoded LSTM.h,cc to use a packed parameter matrix W, and I now have a clean compile and a complete
+execution of test_LSTM with one Cell.  No idea if the answer is correct, though.

@@ -42,21 +42,10 @@ int main(int argc, char** argv){
   
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
   Normaldev gen(0,1,seed);
-  Matrix<Matrix<double>> W(3,4), dE_dW(2,4);
-  for(int j = 0;j < 4;j++){
-    for(int i = 0;i < 2;i++){
-      W(i,j).reset(n_s,n_s+1);
-      dE_dW(i,j).reset(n_s,n_s+1);
-      ranfill(W(i,j),gen);
-      dE_dW(i,j).fill(0);
-    }
-    W(2,j).reset(n_s,n_x+1);
-    ranfill(W(2,j),gen);
-  }
-  // NOTE: no gradients for the x-vector! It's not propagated forward or corrected 
-  for(int i = 0;i < 3;i++){
-    for(int j = 0;j < 4;j++) cout << W(i,j)<<endl;
-  }
+  int n = max(n_s,n_x);
+  Matrix<double> W(3*n_s,4*(n+1)), dE_dW(3*n,4*(n+1));
+  ranfill(W,gen);
+  dE_dW.fill(0);
   ColVector<double> v(n_s+1);
   ColVector<double> s(n_s+1);
   RowVector<double> dE_ds(n_s);
@@ -75,7 +64,7 @@ int main(int argc, char** argv){
   }
   RowVector<double> dE_dxn(1);
   dE_dxn[0] = 1.0;
-  Cell cell(v,s,W,dE_dW,dE_dv,dE_ds);
+  Cell cell(1,1,v,s,W,dE_dW,dE_dv,dE_ds);
   ColVector<double> x = {1,gen.dev()};
   cout << "input: "<<x<<endl;
   cell.forward_step(x);
