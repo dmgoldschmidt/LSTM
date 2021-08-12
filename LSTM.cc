@@ -65,9 +65,10 @@ void Gate::b_step(RowVector<double>& dE_dg)
  */
 
 { 
-
   double u = (gn == 0 ? .5 : 1);
+  cout << format("dE_dg pre-squash: %.9f",dE_dg[0])<<", post-squash:";
   for(int i = 0;i < n_s;i++)dE_dg[i] = dE_dg[i]*g[i]*(1-g[i])*u; // back up thru squash
+  cout << dE_dg.Tr();
   dE_dv += dE_dg*U_v; // back up thru W_v (weights only!  bias has no effect here
   if(gn > 0) dE_ds += dE_dg*U_s; // and W_s
   /* dE_dv and dE_ds are back_propagated to the previous gate or cell. 
@@ -75,9 +76,13 @@ void Gate::b_step(RowVector<double>& dE_dg)
    * Next, we update the partials wrt model parameters
    */
   // update weight/bias gradients (v,s,x were saved by f_step)
+  cout << "about to update dE_dW_v.  v = "<<v.Tr()<<", dE_dW_v = "<<dE_dW_v;
   dE_dW_v += (v*dE_dg).Tr(); 
   if(gn > 0) dE_dW_s += (s*dE_dg).Tr();
   dE_dW_x += (x*dE_dg).Tr();
+  cout << "gate "<<gn<<" b_step: dE_dg = "<<dE_dg<<", dE_dv = "<<dE_dv<<" , dE_ds = "<<dE_ds<<endl;
+  cout << "dE_dW_v:\n"<<dE_dW_v<<"dE_dW_s:\n"<<dE_dW_s<<"dE_dW_x:\n"<<dE_dW_x;
+  
 }
  
 /*********************** begin Cell code here */
@@ -98,6 +103,19 @@ inline ColVector<double> throttle(RowVector<double>& x, ColVector<double>& g){ /
   return y;
 }
 
+void Cell::reset(int n_s0, int n_x0, ColVector<double>& v0, ColVector<double>& s0, Matrix<double>& W0,
+                 Matrix<double>& dE_dW0, RowVector<double>& dE_dv0, RowVector<double>& dE_ds0){
+  n_s = n_s0; n_x = n_x0; v = v0; s = s0; W = W0; dE_dW = dE_dW0; dE_dv = dE_dv0; dE_ds = dE_ds0;
+  assert(W0.nrows() >= 3*n_s && W0.ncols() >= 4*(max(n_s,n_x)+1));
+   gate.reset(4);
+  for(int j = 0;j < 4;j++){
+    gate[j].reset(W0,dE_dW0,dE_dv0,dE_ds0,n_s,n_x,j);
+  }
+  r.reset(n_s+1);
+  dE_dr.reset(n_s);
+  dE_dg.reset(n_s);
+}
+
 void Cell::forward_step(ColVector<double>& x){ // v and s are Cell variables
   gate[0].f_step(v,s,x);
   gate[1].f_step(v,s,x);
@@ -109,18 +127,18 @@ void Cell::forward_step(ColVector<double>& x){ // v and s are Cell variables
   v = throttle(r, gate[3].g);
 }
 
-
-
 void Cell::backward_step(RowVector<double>& dEn_dv){
-  dE_dv += dEn_dv; // combine local gradient
+  cout << "Backward step.  dEn_dv:\n"<<dEn_dv;
+  dE_dv += dEn_dv; // combine local error gradient
   dE_dr = throttle(dE_dv,gate[3].g);
-  for(int i = 0;i < n_s;i++)dE_ds[i] += dE_dr[i]*(1-r[i]*r[i])/2;
+  for(int i = 0;i < n_s;i++)dE_ds[i] += dE_dr[i]*(1-r[i]*r[i])/2; // update dE_ds from local error gradient
   dE_dg = throttle(dE_dv,r);
   gate[3].b_step(dE_dg); // r was saved during the forward step
   
   // OK, now dE_ds, dE_dv, and dE_dW(i,3) are updated past gate 3.
   // save for gate[1] backprop before pushing through the next operation
   RowVector<double> dE_ds1 = throttle(dE_ds,gate[2].g); 
+  cout << format("gate[2] pre_throttle dE_ds: %f, gate[2].s: %f\n",dE_ds[0],gate[2].s);
   dE_dg = throttle(dE_ds,gate[2].s);
   gate[2].b_step(dE_dg);
   dE_ds += dE_ds1;

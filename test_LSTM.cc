@@ -33,12 +33,14 @@ int main(int argc, char** argv){
   int n_s = 1; // state-output dimension
   int ndata = 1; // no. of data points
   int seed = 12345;
+  int ncells = 2;
   
   GetOpt cl(argc,argv);
   cl.get("n_x",n_x);
   cl.get("n_s",n_s);
   cl.get("ndata",ndata);
   cl.get("seed",seed);
+  cl.get("ncells",ncells);
   
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
   Normaldev gen(0,1,seed);
@@ -50,8 +52,8 @@ int main(int argc, char** argv){
   ColVector<double> s(n_s+1);
   RowVector<double> dE_ds(n_s);
   RowVector<double> dE_dv(n_s);
-  v.fill(0);
-  s.fill(0);
+  v.fill(0); v[0] = 1.0;
+  s.fill(0); s[0] = 1.0;
   dE_ds.fill(0);
   dE_dv.fill(0);
   
@@ -64,13 +66,20 @@ int main(int argc, char** argv){
   }
   RowVector<double> dE_dxn(1);
   dE_dxn[0] = 1.0;
-  Cell cell(1,1,v,s,W,dE_dW,dE_dv,dE_ds);
-  ColVector<double> x = {1,gen.dev()};
+  Array<Cell> cell(ncells);
+  for(int i = 0;i < ncells;i++){
+    cell[i].reset(n_s,n_x,v,s,W,dE_dW,dE_dv,dE_ds);
+  }
+  ColVector<double> x = {1,1};
   cout << "input: "<<x<<endl;
-  cell.forward_step(x);
-  cout << "after forward_step:\n"<<cell;
-  cell.backward_step(dE_dxn);
-  cout << "after backward_step:\n"<<cell;
+  for(int i = 0;i < ncells;i++){
+    cell[i].forward_step(x);
+    cout << format("\ncell[%d] after forward_step:\n",i)<<cell;
+  }
+  for(int i = ncells-1;i >= 0;i--){
+    cell[i].backward_step(dE_dxn);
+    cout << format("\ncell[%d] after backward_step:\n",i)<<cell;
+  }
 }
   // Matrix<double> output(n_s,ndata+1);
   // LSTM lstm(data,output,W);

@@ -135,7 +135,7 @@ struct Cell {
   int n_s; // no. of  state and output variables
   int n_x; // no. of input variables
   Array<Gate> gate; // four copies of struct Gate
-  // The following six items are defined in LSTM and updated by Cell/Gate
+  // The following six items are defined in LSTM and updated by every Cell/Gate
   ColVector<double> v;
   ColVector<double> s;
   Matrix<double> W;
@@ -147,7 +147,7 @@ struct Cell {
   RowVector<double> dE_dr;
   RowVector<double> dE_dg;
   Cell(void){}
-  Cell(
+  void reset(
        int n_s0, // no. of state parameters
        int n_x0, // no. of input parameters
        ColVector<double>& v0, 
@@ -155,17 +155,7 @@ struct Cell {
        Matrix<double>& W0,
        Matrix<double>& dE_dW0,
        RowVector<double>& dE_dv0,
-       RowVector<double>& dE_ds0) :
-    n_s(n_s0), n_x(n_x0), v(v0), s(s0), W(W0), dE_dW(dE_dW0), dE_dv(dE_dv0), dE_ds(dE_ds0), gate(4)
-  {
-    assert(W0.nrows() >= 3*n_s && W0.ncols() >= 4*(max(n_s,n_x)+1));
-    for(int j = 0;j < 4;j++){
-      gate[j].reset(W0,dE_dW0,dE_dv0,dE_ds0,n_s,n_x,j);
-    }
-    r.reset(n_s+1);
-    dE_dr.reset(n_s);
-    dE_dg.reset(n_s);
-  }
+       RowVector<double>& dE_ds0);
   void forward_step(ColVector<double>& x);
   void backward_step(RowVector<double>& dEn_dv);
   /* forward input is v,s and x, output is v,s.
