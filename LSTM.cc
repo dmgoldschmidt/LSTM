@@ -21,14 +21,12 @@ ColVector<double> augment(ColVector<double>& x){
 
 //double sigma(double u){return 1/(1+exp(-u));}
 
-ColVector<double>& squash(ColVector<double>& x){
+void squash(ColVector<double>& x){
   for(int i = 0;i < x.nrows();i++) x[i] = sigma(x[i]);
-  return x;
 }
 
-ColVector<double>& bulge(ColVector<double>& x, int n){ // n = 0 if unaugmented, 1 if augmented
+void bulge(ColVector<double>& x, int n){ // n = 0 if unaugmented, 1 if augmented
   for(int i = n;i < x.nrows();i++) x[i] =2*sigma(x[i])-1;
-  return x;
 }
 
 std:: ostream& operator <<(std::ostream& os, Cell& c){
@@ -45,15 +43,22 @@ ColVector<double> Gate::f_step(ColVector<double>& v0, //readout
                                      ColVector<double>& s0, // state
                                      ColVector<double>& x0) // input
 {
-  v = v0.copy(); // save inputs for b_step (backprop)
-  s = s0.copy(); // ditto
+  v = v0; 
+  s = s0;
+  // deep copy inputs for b_step (backprop)
+  v_old = v0.copy(); 
+  s_old = s0.copy(); 
   x = x0.copy();
   g = W_v*v + W_x*x; //apply affine maps to w,x  
   if(gn > 0){ // and s except at gate 0
     g += W_s*s; // apply weights to the input
-    g  = squash(g);  // and save it for backward_step
+    squash(g);  // and save it for backward_step
   }
-  else g = augment(bulge(g)); // gate 0 only
+  else{
+    bulge(g); // gate 0 only
+    g = augment(g);
+  }
+  cout <<format("gate[%d] at exit:  v[0] = %f\n",gn,v[0]);
   return g;
 }
 
@@ -75,10 +80,10 @@ void Gate::b_step(RowVector<double>& dE_dg)
    * Current values are read by Cell at input.
    * Next, we update the partials wrt model parameters
    */
-  // update weight/bias gradients (v,s,x were saved by f_step)
+  // update weight/bias gradients (v_old,s_old,x were saved by f_step)
   cout << "about to update dE_dW_v.  v = "<<v.Tr()<<", dE_dW_v = "<<dE_dW_v;
-  dE_dW_v += (v*dE_dg).Tr(); 
-  if(gn > 0) dE_dW_s += (s*dE_dg).Tr();
+  dE_dW_v += (v_old*dE_dg).Tr(); 
+  if(gn > 0) dE_dW_s += (s_old*dE_dg).Tr();
   dE_dW_x += (x*dE_dg).Tr();
   cout << "gate "<<gn<<" b_step: dE_dg = "<<dE_dg<<", dE_dv = "<<dE_dv<<" , dE_ds = "<<dE_ds<<endl;
   cout << "dE_dW_v:\n"<<dE_dW_v<<"dE_dW_s:\n"<<dE_dW_s<<"dE_dW_x:\n"<<dE_dW_x;
@@ -89,7 +94,7 @@ void Gate::b_step(RowVector<double>& dE_dg)
 
 inline ColVector<double> throttle(ColVector<double>& x, ColVector<double>& g){
   // x may be augmented or not
-  ColVector<double> y = x.copy(); // output has dim(g) (typically n_s)
+  ColVector<double> y = x.copy(); 
   int n = (x.nrows() == g.nrows() ? 0:1); 
   for(int i = 0;i < g.nrows();i++) y[i+n] = x[i+n]*g[i];
   return y;
@@ -103,9 +108,12 @@ inline ColVector<double> throttle(RowVector<double>& x, ColVector<double>& g){ /
   return y;
 }
 
-void Cell::reset(int n_s0, int n_x0, ColVector<double>& v0, ColVector<double>& s0, Matrix<double>& W0,
-                 Matrix<double>& dE_dW0, RowVector<double>& dE_dv0, RowVector<double>& dE_ds0){
-  n_s = n_s0; n_x = n_x0; v = v0; s = s0; W = W0; dE_dW = dE_dW0; dE_dv = dE_dv0; dE_ds = dE_ds0;
+void Cell::reset(int n_s0, int n_x0, ColVector<double>& v0,
+                 ColVector<double>& s0, Matrix<double>& W0,
+                 Matrix<double>& dE_dW0, RowVector<double>& dE_dv0,
+                 RowVector<double>& dE_ds0){
+  n_s = n_s0; n_x = n_x0; v = v0; s = s0; W = W0; dE_dW = dE_dW0;
+  dE_dv = dE_dv0; dE_ds = dE_ds0;
   assert(W0.nrows() >= 3*n_s && W0.ncols() >= 4*(max(n_s,n_x)+1));
    gate.reset(4);
   for(int j = 0;j < 4;j++){
@@ -121,10 +129,13 @@ void Cell::forward_step(ColVector<double>& x){ // v and s are Cell variables
   gate[1].f_step(v,s,x);
   gate[2].f_step(v,s,x);
   //  ColVector<double> g1 = augment(gate[0].g);
-  s = throttle(s, gate[2].g) + throttle(gate[0].g, gate[1].g);
+  s.copy(throttle(s, gate[2].g) + throttle(gate[0].g, gate[1].g));
+  s[0] = 1.0;
+  // s <- s .* gate[2].g + (bulge(gate[0].g) .* gate[1].g)
   gate[3].f_step(v,s,x);
-  r = bulge(s,1); // argument_2 = 1 for augmented input
-  v = throttle(r, gate[3].g);
+  r = s.copy();
+  bulge(r,1); 
+  v.copy(throttle(r, gate[3].g)); // v <- bulge(s) .* gate[3].g
 }
 
 void Cell::backward_step(RowVector<double>& dEn_dv){

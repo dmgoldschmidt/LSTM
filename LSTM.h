@@ -15,9 +15,9 @@ ColVector<double> augment(ColVector<double>& x);
 
 inline double sigma(double u){return 1/(1+exp(-u));}
 
-ColVector<double>& squash(ColVector<double>& x);
+void squash(ColVector<double>& x);
 
-ColVector<double>& bulge(ColVector<double>& x,int n = 0);
+void bulge(ColVector<double>& x,int n = 0);
 
 struct Gate {
   /* A gate is just the function sigma(g(v,s,x)) where 
@@ -43,11 +43,11 @@ struct Gate {
   int n_s; // no. of state parameters
   int n_x; // no. of input parameters
   
-  Matrix<double> W_v;
-  Matrix<double> W_s;
+  Matrix<double> W_v; // Each gate has a shallow copy of the relevant weight/
+  Matrix<double> W_s; // bias matrices
   Matrix<double> W_x;
-  /* Each W_k is an n_k x n_k+1 matrix of 
-   * weights and biases, where k = (s,s,x). The first column of each matrix is bias.  
+  /* Each W_k is an n_s x n_k+1 matrix of weights and biases, where 
+   * k = (s,s,x). The first column of each matrix is bias.  
    * This works because the input signals have a constant 1 in component 0. 
    * NOTE: gate 0 doesn't use W_s because it has no state input. 
    */
@@ -56,17 +56,19 @@ struct Gate {
   RowVector<double> dE_ds; // partials w.r.t state for backprop
   Matrix<double> U_v, U_s, U_x; // slice of each W_k to remove bias
 
-  // the following three vectors are input, modified, and saved for backprop
-  ColVector<double> v; // readout 
-  ColVector<double> s; // state
-  ColVector<double> x; // cell input
+  // v_old, s_old, and x are saved for backprop
+  ColVector<double> v,v_old; // readout (fed forward and modified)
+  ColVector<double> s,s_old; // state   (ditto)
+  ColVector<double> x; // cell input from user (unique to each cell) 
   
   ColVector<double> g; // gate output (saved for backprop
  public:
   Gate(void){}
-  void reset(Matrix<double>& W, // All model weights & biases
-             Matrix<double>& dE_dW, // All model gradients
-             RowVector<double>& dE_dv0, //backprop variables (shallow copied, updated, and saved)
+  void reset(Matrix<double>& W, // All model weights & biases.
+                                // Slices are computed below.
+             Matrix<double>& dE_dW, // All model gradients  -- shallow copied
+                                    // and updated by b_step
+             RowVector<double>& dE_dv0, //backprop variables --shallow copied                                        //updated, and saved by b_step)
              RowVector<double>& dE_ds0,
              int n_s0, int n_x0, int gn0) {
     n_s = n_s0; n_x = n_x0; gn = gn0;
@@ -81,15 +83,11 @@ struct Gate {
     dE_dW_s = dE_dW.slice(n_s,gn*(n_s+1),n_s,n_s+1);
     dE_dW_x = dE_dW.slice(2*n_s,gn*(n_x+1),n_s,n_x+1);
 
-    U_v = W_v.slice(0,1,n_s,n_s);
+    U_v = W_v.slice(0,1,n_s,n_s); // we're slicing off the bias column here
     U_s = W_s.slice(0,1,n_s,n_s);
     U_x = W_x.slice(0,1,n_s,n_x);
 
-    // v,s,x,g are all saved for backprop
-    v.reset(n_s+1); // component 0 = 1.0 to account for W(i,j)(i.0) = bias
-    s.reset(n_s+1);
-    x.reset(n_x+1);
-    
+    // v_old,s_old,x,g are all saved for backprop
     g.reset(n_s); 
   }
   
@@ -99,7 +97,8 @@ struct Gate {
   //   return *this;
   // }
   
-  ColVector<double> f_step(ColVector<double>& v, ColVector<double>& s, ColVector<double>& x);
+  ColVector<double> f_step(ColVector<double>& v, ColVector<double>& s,
+                           ColVector<double>& x);
   void b_step(RowVector<double>& dE_dg);
 };
 
@@ -134,7 +133,7 @@ struct Cell {
   friend class Gate;
   int n_s; // no. of  state and output variables
   int n_x; // no. of input variables
-  Array<Gate> gate; // four copies of struct Gate
+  Array<Gate> gate; // each Cell has a separate set of four Gates.
   // The following six items are defined in LSTM and updated by every Cell/Gate
   ColVector<double> v;
   ColVector<double> s;

@@ -71,14 +71,17 @@ int main(int argc, char** argv){
     cell[i].reset(n_s,n_x,v,s,W,dE_dW,dE_dv,dE_ds);
   }
   ColVector<double> x = {1,1};
-  cout << "input: "<<x<<endl;
+  cout << "input: "<<x.Tr()<<endl;
   for(int i = 0;i < ncells;i++){
+    cout << format("\nCell[%d] before forward step\n",i)<<cell[i];
     cell[i].forward_step(x);
-    cout << format("\ncell[%d] after forward_step:\n",i)<<cell;
+    cout << "from test_LSTM:  v = "<<v.Tr();
+    cout << format("\nCell[%d] after forward_step:\n",i)<<cell[i];
   }
   for(int i = ncells-1;i >= 0;i--){
+    cout << format("\nCell[%d] before backward_step:\n",i)<<cell[i];
     cell[i].backward_step(dE_dxn);
-    cout << format("\ncell[%d] after backward_step:\n",i)<<cell;
+    cout << format("\nCell[%d] after backward_step:\n",i)<<cell[i];
   }
 }
   // Matrix<double> output(n_s,ndata+1);
