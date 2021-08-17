@@ -70,9 +70,11 @@ int main(int argc, char** argv){
   for(int i = 0;i < ncells;i++){
     cell[i].reset(n_s,n_x,v,s,W,dE_dW,dE_dv,dE_ds);
   }
-  ColVector<double> x = {1,1};
+  ColVector<double> x(n_s+1);
+  x[0] = 1;
   cout << "input: "<<x.Tr()<<endl;
   for(int i = 0;i < ncells;i++){
+    x[1] = i+1;
     cout << format("\nCell[%d] before forward step\n",i)<<cell[i];
     cell[i].forward_step(x);
     cout << "from test_LSTM:  v = "<<v.Tr();

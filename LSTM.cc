@@ -58,7 +58,7 @@ ColVector<double> Gate::f_step(ColVector<double>& v0, //readout
     bulge(g); // gate 0 only
     g = augment(g);
   }
-  cout <<format("gate[%d] at exit:  v[0] = %f\n",gn,v[0]);
+  cout <<format("gate[%d] at exit: g = ",gn)<<g.Tr();
   return g;
 }
 
@@ -160,27 +160,58 @@ void Cell::backward_step(RowVector<double>& dEn_dv){
   gate[0].b_step(dE_ds1);
 }
   
-// LSTM::LSTM(Matrix<double>& d, Matrix<double>& o, Matrix<Matrix<double>>& p) :
-//   data(d),output(o),parameters(p) {
-  
-//   Cell::static_initializer(output.nrows(),data.nrows());
-//   int& n_s = Cell::n_s;
-//   for(int i = 0;i < 4;i++){
-//     assert(data.nrows() == parameters(i,2).ncols() && data.nrows() == Cell::n_x); // input dimension
-//     for(int j = 0;j < 2;j++)assert(output.nrows() == parameters(i,j).ncols() && output.nrows() == n_s);
-//   }
-//   ncells = data.ncols(); 
-//   cells.reset(ncells+2); // first and last cell are initializers
+LSTM::LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
+           Matrix<double>& w) : n_s(ns0),n_x(nx0),ncells(nc),data(d),
+                               output(o),W(w){
+  int n = max(n_s,n_x);
+  W.reset(3*n_s,4*(n+1));
+  dE_dW.reset(3*n_s,4*(n+1));
+  dE_dW.fill(0);
+  v.reset(n_s+1);
+  s.reset(n_s+1);
+  dE_ds.reset(n_s);
+  dE_dv.reset(n_s);
+  v.fill(0); v[0] = 1.0;
+  s.fill(0); s[0] = 1.0;
+  dE_ds.fill(0);
+  dE_dv.fill(0);
 
-//   cells[0].reset(nullptr,&cells[1],parameters);
-//   cells[ncells+1].reset(&cells[ncells],nullptr,parameters);
-//   for(int i = 1;i <= ncells;i++)cells[i].reset(&cells[i-1],&cells[i+1],parameters);
-//   // initialize first and last cells
-//   cells[0].w[0].copy(Cell::zero);
-//   cells[0].w[1].copy(Cell::zero);
-//   cells[ncells+1].d_ds.copy(Cell::zero);
-//   cells[ncells+1].d_dv.copy(Cell::zero);
-// }
+  assert(data.ncols() == n_x+n_s); 
+  assert(ncells <= data.nrows()); 
+  cells.reset(ncells); // first and last cell are initializers
 
-// void LSTM::train(int niters,double pct,double learn,double eps){
+  for(int i = 0;i < ncells;i++)
+    cells[i].reset(n_s,n_x,v,s,W,dE_dW,dE_dv,dE_ds);
+}
+ 
+void LSTM::train(int niters,int nhist, double eps, double a,double b1,
+                 double b2){
 
+  ColVector<double> x(n_x+1);
+  x[0] = 1;
+  Array<double> E(ncells); // readout error
+  Array<RowVector<double>> dEi_dv(ncells); // gradient of readout error
+  for(int i = 0;i < ncells;i++) dEi_dv[i].reset(n_s);
+
+  while( iter++ < niters && E_tot > eps){
+    for(int t = nhist;t < data.nrows();t++){
+      for(int i = 0;i < ncells;i++){
+        for(int j = 0;j < n_x;j++) x[j+1] = data(i,j);
+        cout << format("\nCell[%d] before forward step\n",i)<<cell[i];
+        cell[i].forward_step(x);
+        E[i] = 0;
+        for(int j = 0;j < n_s;j++){
+          double delta = cell[i].v[j+1] - data(i,n_x+j);
+          E[i] += delta*delta;
+          dEi_dv[i][j] = 2*delta;
+        }
+        cout << format("\nCell[%d] after forward_step:\n",i)<<cell[i];
+      }
+
+      for(int i = ncells-1;i >= 0;i--){
+        cout << format("\nCell[%d] before backward_step:\n",i)<<cell[i];
+        cell[i].backward_step(dEi_dv[i]);
+        cout << format("\nCell[%d] after backward_step:\n",i)<<cell[i];
+      }
+    }
+  }

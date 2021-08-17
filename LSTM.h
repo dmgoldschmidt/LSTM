@@ -168,11 +168,17 @@ std:: ostream& operator <<(std::ostream& os, Cell& c);
 struct LSTM {
   Array<Cell> cells;
   int ncells;
-  //  int n_s;
-  //  int n_x;
+  int n_s;
+  int n_x;
   Matrix<double> data; 
   Matrix<double> output;
-  Matrix<Matrix<double>> parameters; //3x4 grid of weight/bias matrices
+  int n = max(n_s,n_x);
+  Matrix<double> W;
+  Matrix<double> dE_dW;
+  ColVector<double> v;
+  ColVector<double> s;
+  RowVector<double> dE_ds;
+  RowVector<double> dE_dv;
 public:
   LSTM(Matrix<double>& d, Matrix<double>& o, Matrix<Matrix<double>>& p);
   void train(int max_iters, double pct=1.0, double learn = .1, double eps = 1.0e-8);
