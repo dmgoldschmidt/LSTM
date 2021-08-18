@@ -172,7 +172,6 @@ struct LSTM {
   int n_x;
   Matrix<double> data; 
   Matrix<double> output;
-  int n = max(n_s,n_x);
   Matrix<double> W;
   Matrix<double> dE_dW;
   ColVector<double> v;
@@ -181,7 +180,8 @@ struct LSTM {
   RowVector<double> dE_dv;
 public:
   LSTM(Matrix<double>& d, Matrix<double>& o, Matrix<Matrix<double>>& p);
-  void train(int max_iters, double pct=1.0, double learn = .1, double eps = 1.0e-8);
+  void train(int niters,int nhist, double eps = 1.0e-8, double a = .001,
+             double b1 = .9,double b2 = .999);
 };
 
 #endif

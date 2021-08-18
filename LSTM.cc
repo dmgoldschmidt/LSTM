@@ -161,22 +161,16 @@ void Cell::backward_step(RowVector<double>& dEn_dv){
 }
   
 LSTM::LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
-           Matrix<double>& w) : n_s(ns0),n_x(nx0),ncells(nc),data(d),
+           Matrix<double>& w, : n_s(ns0),n_x(nx0),ncells(nc),data(d),
                                output(o),W(w){
   int n = max(n_s,n_x);
-  W.reset(3*n_s,4*(n+1));
   dE_dW.reset(3*n_s,4*(n+1));
-  dE_dW.fill(0);
   v.reset(n_s+1);
   s.reset(n_s+1);
   dE_ds.reset(n_s);
   dE_dv.reset(n_s);
-  v.fill(0); v[0] = 1.0;
-  s.fill(0); s[0] = 1.0;
-  dE_ds.fill(0);
-  dE_dv.fill(0);
 
-  assert(data.ncols() == n_x+n_s); 
+  assert(data.ncols() == n_x+n_s); // contexts + goals
   assert(ncells <= data.nrows()); 
   cells.reset(ncells); // first and last cell are initializers
 
@@ -184,27 +178,42 @@ LSTM::LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
     cells[i].reset(n_s,n_x,v,s,W,dE_dW,dE_dv,dE_ds);
 }
  
-void LSTM::train(int niters,int nhist, double eps, double a,double b1,
+void LSTM::train(int niters,double eps, double a,double b1,
                  double b2){
 
   ColVector<double> x(n_x+1);
   x[0] = 1;
-  Array<double> E(ncells); // readout error
-  Array<RowVector<double>> dEi_dv(ncells); // gradient of readout error
+  Array<double> E(ncells); // readout error at cell i
+  Array<RowVector<double>> dEi_dv(ncells);
+               // gradient of readout error at cell i
   for(int i = 0;i < ncells;i++) dEi_dv[i].reset(n_s);
-
-  while( iter++ < niters && E_tot > eps){
-    for(int t = nhist;t < data.nrows();t++){
+  double E_tot = 1.0;
+  double b1t = b1;
+  double b2t = b2;
+  Matrix<double> M(W), V(W);
+  M.fill(0); V.fill(0);;
+  int it = 0;
+  
+  while( it++ < niters && E_tot > eps){
+    E_tot = 0;
+    v.fill(0); v[0] = 1.0;
+    s.fill(0); s[0] = 1.0;
+    dE_ds.fill(0);
+    dE_dv.fill(0);
+    dE_dW.fill(0);
+    
+    for(int t = 0;t < data.nrows()-ncells;t += ncells){
       for(int i = 0;i < ncells;i++){
-        for(int j = 0;j < n_x;j++) x[j+1] = data(i,j);
+        for(int j = 0;j < n_x;j++) x[j+1] = data(i+t,j);
         cout << format("\nCell[%d] before forward step\n",i)<<cell[i];
         cell[i].forward_step(x);
         E[i] = 0;
         for(int j = 0;j < n_s;j++){
           double delta = cell[i].v[j+1] - data(i,n_x+j);
-          E[i] += delta*delta;
+          E[i] += delta*delta; 
           dEi_dv[i][j] = 2*delta;
         }
+        E_tot += E[i];
         cout << format("\nCell[%d] after forward_step:\n",i)<<cell[i];
       }
 
@@ -214,4 +223,21 @@ void LSTM::train(int niters,int nhist, double eps, double a,double b1,
         cout << format("\nCell[%d] after backward_step:\n",i)<<cell[i];
       }
     }
-  }
+    E_tot /= data.nrows();
+    
+    // OK, data pass is complete.  Now update parameters
+    double m_hat, v_hat;
+    for(int i = 0;i < 3*n_s;i++){
+      int n = (i < 2*n_s? n_s : n_x);
+      for(int j = 0;j < 4*(n+1);j++){
+        M(i,j) = b1*M(i,j) + (1 - b1)*dE_dW(i,j);
+        m_hat = M(i,j)/(1-b1t);
+        V(i,j) = b2*V(i,j) + (1-b2)*dE_dW(i,j)*dE_dW(i,j);
+        v_hat = V(i,j)*(1/(1-b2t));
+        W(i,j) -= dE_dW(i,j)*a*m_hat/(v_hat+eps)
+        b1t *= b1;
+        b2t *= b2;
+      }
+    }      
+  } // on to next iteration
+}
