@@ -1,8 +1,9 @@
 #include <iostream>
 #include <cassert>
+#include "using.h"
 #include "util.h"
 #include "LSTM.h"
-using namespace std;
+//using namespace std;
 
 void work_around(Matrix<double> A, Matrix<double> B, Matrix<double> C){// A += B*C
   for(int i = 0;i < A.nrows();i++){
@@ -114,7 +115,7 @@ void Cell::reset(int n_s0, int n_x0, ColVector<double>& v0,
                  RowVector<double>& dE_ds0){
   n_s = n_s0; n_x = n_x0; v = v0; s = s0; W = W0; dE_dW = dE_dW0;
   dE_dv = dE_dv0; dE_ds = dE_ds0;
-  assert(W0.nrows() >= 3*n_s && W0.ncols() >= 4*(max(n_s,n_x)+1));
+  assert(W0.nrows() >= 3*n_s && W0.ncols() >= 4*(std::max(n_s,n_x)+1));
    gate.reset(4);
   for(int j = 0;j < 4;j++){
     gate[j].reset(W0,dE_dW0,dE_dv0,dE_ds0,n_s,n_x,j);
@@ -161,9 +162,9 @@ void Cell::backward_step(RowVector<double>& dEn_dv){
 }
   
 LSTM::LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
-           Matrix<double>& w, : n_s(ns0),n_x(nx0),ncells(nc),data(d),
+           Matrix<double>& w) : n_s(ns0),n_x(nx0),ncells(nc),data(d),
                                output(o),W(w){
-  int n = max(n_s,n_x);
+  int n = std::max(n_s,n_x);
   dE_dW.reset(3*n_s,4*(n+1));
   v.reset(n_s+1);
   s.reset(n_s+1);
@@ -171,11 +172,13 @@ LSTM::LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
   dE_dv.reset(n_s);
 
   assert(data.ncols() == n_x+n_s); // contexts + goals
-  assert(ncells <= data.nrows()); 
-  cells.reset(ncells); // first and last cell are initializers
+  assert(ncells <= data.nrows());
+  if(ncells == 0) ncells = data.nrows();
+  cell.reset(ncells); 
 
   for(int i = 0;i < ncells;i++)
-    cells[i].reset(n_s,n_x,v,s,W,dE_dW,dE_dv,dE_ds);
+    cell[i].reset(n_s,n_x,v,s,W,dE_dW,dE_dv,dE_ds);
+  cout << "sizeof(Cell) = "<<sizeof(cell[0])<<endl;
 }
  
 void LSTM::train(int niters,double eps, double a,double b1,
@@ -212,6 +215,7 @@ void LSTM::train(int niters,double eps, double a,double b1,
           double delta = cell[i].v[j+1] - data(i,n_x+j);
           E[i] += delta*delta; 
           dEi_dv[i][j] = 2*delta;
+          output(i,j) = cell[i].v[j+1];
         }
         E_tot += E[i];
         cout << format("\nCell[%d] after forward_step:\n",i)<<cell[i];
@@ -224,20 +228,23 @@ void LSTM::train(int niters,double eps, double a,double b1,
       }
     }
     E_tot /= data.nrows();
+  
     
     // OK, data pass is complete.  Now update parameters
     double m_hat, v_hat;
     for(int i = 0;i < 3*n_s;i++){
       int n = (i < 2*n_s? n_s : n_x);
       for(int j = 0;j < 4*(n+1);j++){
+        dE_dW(i,j) /= data.nrows();
         M(i,j) = b1*M(i,j) + (1 - b1)*dE_dW(i,j);
         m_hat = M(i,j)/(1-b1t);
         V(i,j) = b2*V(i,j) + (1-b2)*dE_dW(i,j)*dE_dW(i,j);
         v_hat = V(i,j)*(1/(1-b2t));
-        W(i,j) -= dE_dW(i,j)*a*m_hat/(v_hat+eps)
+        W(i,j) -= dE_dW(i,j)*a*m_hat/(v_hat+eps);
         b1t *= b1;
         b2t *= b2;
       }
     }      
   } // on to next iteration
+  cout << "output:\n"<< output;
 }

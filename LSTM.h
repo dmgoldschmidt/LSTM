@@ -4,12 +4,11 @@
 #include <cassert>
 #include <cmath>
 #include <fenv.h>
+#include "using.h"
 #include "util.h"
 #include "GetOpt.h"
 #include "Matrix.h"
 #include "Array.h"
-
-using namespace std;
 
 ColVector<double> augment(ColVector<double>& x);
 
@@ -166,7 +165,7 @@ struct Cell {
 std:: ostream& operator <<(std::ostream& os, Cell& c);
 
 struct LSTM {
-  Array<Cell> cells;
+  Array<Cell> cell;
   int ncells;
   int n_s;
   int n_x;
@@ -179,8 +178,9 @@ struct LSTM {
   RowVector<double> dE_ds;
   RowVector<double> dE_dv;
 public:
-  LSTM(Matrix<double>& d, Matrix<double>& o, Matrix<Matrix<double>>& p);
-  void train(int niters,int nhist, double eps = 1.0e-8, double a = .001,
+  LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
+       Matrix<double>& w);
+  void train(int niters,double eps = 1.0e-8, double a = .001,
              double b1 = .9,double b2 = .999);
 };
 

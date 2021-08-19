@@ -1,6 +1,7 @@
 INC = /home/david/code/include
 SRC = /home/david/code/src
-CFLAGS = -g -Wall -I$(INC) -std=c++11
+CFLAGS = -g -Wall -I$(INC) -std=c++14
+VPATH = $(INC)
 CC = g++
 #CC = clang++ -DFILAMENT_REQUIRES_CXXABI=true
 
