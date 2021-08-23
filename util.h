@@ -12,121 +12,29 @@
 #include <stdint.h>
 #include "using.h"
 
-#define Doub double
-#define Int int
 
-struct Erf { // from NR. This enables separate compilation (using util.cc)
-	static const Int ncof=28;
-	static const Doub cof[28];
-
-	inline Doub erf(Doub x) {
-		if (x >=0.) return 1.0 - erfccheb(x);
-		else return erfccheb(-x) - 1.0;
-	}
-
-	inline Doub erfc(Doub x) {
-		if (x >= 0.) return erfccheb(x);
-		else return 2.0 - erfccheb(-x);
-	}
-	
-  Doub erfccheb(Doub z);
-  Doub inverfc(Doub p);
-  inline Doub inverf(Doub p) {return inverfc(1.-p);}
-
-};
-Doub erfcc(const Doub x);
-
-struct Normaldist : Erf {
-	Doub mu, sig;
-	Normaldist(Doub mmu = 0., Doub ssig = 1.) : mu(mmu), sig(ssig) {
-		if (sig <= 0.) throw("bad sig in Normaldist");
-	}
-	Doub p(Doub x) {
-      double v = (x-mu)/sig;
-      return (0.398942280401432678/sig)*exp(-0.5*v*v);
-	}
-	Doub cdf(Doub x) {
-		return 0.5*erfc(-0.707106781186547524*(x-mu)/sig);
-	}
-	Doub invcdf(Doub p) {
-		if (p <= 0. || p >= 1.) throw("bad p in Normaldist");
-		return -1.41421356237309505*sig*inverfc(2.*p)+mu;
-	}
-};
-
-struct Lognormaldist : Erf {
-	Doub mu, sig;
-	Lognormaldist(Doub mmu = 0., Doub ssig = 1.) : mu(mmu), sig(ssig) {
-		if (sig <= 0.) throw("bad sig in Lognormaldist");
-	}
-	Doub p(Doub x) {
-		if (x < 0.) throw("bad x in Lognormaldist");
-		if (x == 0.) return 0.;
-		return (0.398942280401432678/(sig*x))*exp(-0.5*sqrt((log(x)-mu)/sig));
-	}
-	Doub cdf(Doub x) {
-		if (x < 0.) throw("bad x in Lognormaldist");
-		if (x == 0.) return 0.;
-		return 0.5*erfc(-0.707106781186547524*(log(x)-mu)/sig);
-	}
-	Doub invcdf(Doub p) {
-		if (p <= 0. || p >= 1.) throw("bad p in Lognormaldist");
-		return exp(-1.41421356237309505*sig*inverfc(2.*p)+mu);
-	}
-};
-
-class LFSR128 { // implements the xorshift128+ algorithm
-  uint64_t s[2];
-public:
-  LFSR128(void) {}
-  LFSR128(uint64_t seed){ 
-    step(seed);
-    for(int i = 0;i < 1000;i++) step();
+template<typename T1, typename T2>
+struct IndexPair {
+  T1 item1;
+  T2 item2;
+  static int sort_item;
+  IndexPair(void) {}
+  IndexPair(const T1& t1, const T2& t2, int si = 1): item1(t1),item2(t2){sort_item = si;}
+  bool operator <(const IndexPair& p)const {
+    return (sort_item == 1? item1 < p.item1 : item2 < p.item2);
   }
-  LFSR128(uint64_t* ss) {
-    step(ss);
-    for(int i = 0;i < 1000;i++) step();
+  bool operator ==(const IndexPair& p) const{
+    return (sort_item == 1? item1 == p.item1 : item2 == p.item2);
   }
-  uint64_t step(void){
-	uint64_t x = s[0];
-	uint64_t const y = s[1];
-	s[0] = y;
-	x ^= x << 23; // a
-	s[1] = x ^ y ^ (x >> 17) ^ (y >> 26); // b, c
-	return s[1] + y;
-  }
-  uint64_t step(uint64_t seed){
-    s[0] = seed;
-    s[1] = 0;
-    return step();
-  }
-  uint64_t step(uint64_t* ss){
-    s[0] = ss[0];
-    s[1] = ss[1];
-    return step();
-  }
-  double uniform(void){ return step()/(double)UINT64_MAX;}
-  LFSR128& operator=(LFSR128& x){
-    s[0] = x.s[0];
-    s[1] = x.s[1];
+  IndexPair& operator=(const IndexPair& ip){
+    item1 = ip.item1;
+    item2 = ip.item2;
+    //    sort_item = ip.sort_item;
     return *this;
   }
 };
 
-struct Normaldev : LFSR128 { // from NR
-  Doub mu,sig;
-  Normaldev(void) {}
-  Normaldev(Doub mmu, Doub ssig, uint64_t i)
-	: LFSR128(i), mu(mmu), sig(ssig){}
-  Doub dev(void);
-  void reset(Doub mmu, Doub ssig){ 
-    mu = mmu;
-    sig = ssig;
-  }
-  void reset(uint64_t i){ // re-seed
-    step(i);
-  }
-};
+
 
 class PopCount {
   char byte_count[256];
@@ -188,8 +96,8 @@ class BloomFilter { // Have we seen a 64-bit key or a string yet? Remember it fo
     uint64_t hval = 0;
     for(int i = 0;i < s.size();i++){
       hval ^= (s[i] << (i%8));
-      return hash(hval,set);
     }
+    return hash(hval,set);
   }
   void clear(void){
     for(int i = 0;i < 4;i++){
@@ -291,5 +199,13 @@ public:
   double mean(void){return W == 0? 0:S1/W;}
   double variance(void){return W == 0? 0 : S2/W;} // NOTE: for correctness, should be n-1, but WGAS.
 };
+
+
+template <typename T1, typename T2>
+ostream& operator<<(ostream& os, const IndexPair<T1,T2>& p){
+  os << p.item1 <<": "<< p.item2 << endl;
+  return os;
+}
+
 
 #endif

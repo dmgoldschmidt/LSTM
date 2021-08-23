@@ -180,7 +180,7 @@ struct LSTM {
 public:
   LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
        Matrix<double>& w);
-  void train(int niters,double eps = 1.0e-8, double a = .001,
+  void train(int niters,double a = .001,double eps = 1.0e-8, 
              double b1 = .9,double b2 = .999);
 };
 
