@@ -24,13 +24,25 @@ ColVector<double> augment(ColVector<double>& x){
 
 //double sigma(double u){return 1/(1+exp(-u));}
 
-void squash(ColVector<double>& x){
-  for(int i = 0;i < x.nrows();i++) x[i] = sigma(x[i]);
+void squash(ColVector<double>& x, double b){
+  for(int i = 0;i < x.nrows();i++) {
+    x[i] = sigma(x[i]);
+    if(x[i] > b) x[i] = b;
+    if(x[i] < 1-b) x[i] = 1-b;
+  }
 }
 
 void bulge(ColVector<double>& x, int n){ // n = 0 if unaugmented, 1 if augmented
   for(int i = n;i < x.nrows();i++) x[i] =2*sigma(x[i])-1;
 }
+
+// void clip(ColVector<double>& x, double b){
+//   assert(b > 0);
+//   for(int i = 0;i < x.nrows();i++){
+//     if(x[i] > b)x[i] = b;
+//     if(x[i] < -b)x[i] = -b;
+//   }
+// }
 
 std:: ostream& operator <<(std::ostream& os, Cell& c){
   os << "dim(state): "<<c.n_s<<", dim(input): "<<c.n_x<<endl;
@@ -71,12 +83,11 @@ void Gate::b_step(RowVector<double>& dE_dg)
  * dE_dW_k needs to be transposed before the final gradient is 
  * computed. 
  */
-
 { 
   double u = (gn == 0 ? .5 : 1);
   if(verbose) cout << format("dE_dg pre-squash: %.9f",dE_dg[0])<<", post-squash:";
   for(int i = 0;i < n_s;i++)dE_dg[i] = dE_dg[i]*g[i]*(1-g[i])*u; // back up thru squash
-  if(verbose) cout << dE_dg.Tr();
+  /*if(verbose)*/ cout << "dE_dg: "<<dE_dg.Tr()<<"\nU_v:\n"<<U_v;
   dE_dv += dE_dg*U_v; // back up thru W_v (weights only!  bias has no effect here
   if(gn > 0) dE_ds += dE_dg*U_s; // and W_s
   /* dE_dv and dE_ds are back_propagated to the previous gate or cell. 
@@ -88,9 +99,8 @@ void Gate::b_step(RowVector<double>& dE_dg)
   dE_dW_v += (v_old*dE_dg).Tr(); 
   if(gn > 0) dE_dW_s += (s_old*dE_dg).Tr();
   dE_dW_x += (x*dE_dg).Tr();
-  if(verbose) cout << "gate "<<gn<<" b_step: dE_dg = "<<dE_dg<<", dE_dv = "<<dE_dv<<" , dE_ds = "<<dE_ds<<endl;
-  if(verbose) cout << "dE_dW_v:\n"<<dE_dW_v<<"dE_dW_s:\n"<<dE_dW_s<<"dE_dW_x:\n"<<dE_dW_x;
-  
+  /*if(verbose)*/ cout << "gate "<<gn<<" b_step: dE_dg = "<<dE_dg<<", dE_dv = "<<dE_dv<<" , dE_ds = "<<dE_ds<<endl;
+  /*if(verbose)*/ cout << "dE_dW_v:\n"<<dE_dW_v<<"dE_dW_s:\n"<<dE_dW_s<<"dE_dW_x:\n"<<dE_dW_x;
 }
  
 /*********************** begin Cell code here */
@@ -115,7 +125,7 @@ void Cell::reset(int n_s0, int n_x0, ColVector<double>& v0,
                  ColVector<double>& s0, Matrix<double>& W0,
                  Matrix<double>& dE_dW0, RowVector<double>& dE_dv0,
                  RowVector<double>& dE_ds0){
-  n_s = n_s0; n_x = n_x0; v = v0; s = s0; W = W0; dE_dW = dE_dW0;
+  n_s = n_s0; n_x = n_x0; v = v0; s = s0; W = W0; dE_dW = dE_dW0; 
   dE_dv = dE_dv0; dE_ds = dE_ds0;
   assert(W0.nrows() >= 3*n_s && W0.ncols() >= 4*(std::max(n_s,n_x)+1));
    gate.reset(4);
@@ -134,21 +144,24 @@ void Cell::forward_step(ColVector<double>& x){ // v and s are Cell variables
   //  ColVector<double> g1 = augment(gate[0].g);
   s.copy(throttle(s, gate[2].g) + throttle(gate[0].g, gate[1].g));
   s[0] = 1.0;
-  // s <- s .* gate[2].g + (bulge(gate[0].g) .* gate[1].g)
+   // s <- s .* gate[2].g + (bulge(gate[0].g) .* gate[1].g)
   gate[3].f_step(v,s,x);
   r = s.copy();
   bulge(r,1); 
   v.copy(throttle(r, gate[3].g)); // v <- bulge(s) .* gate[3].g
 }
 
-void Cell::backward_step(RowVector<double>& dEn_dv){
-  if(verbose) cout << "Backward step.  dEn_dv:\n"<<dEn_dv;
+void Cell ::backward_step(RowVector<double>& dEn_dv){
   dE_dv += dEn_dv; // combine local error gradient
+  /*if(verbose)*/ cout << "Backward step:  dEn_dv:\n"<<dEn_dv<<"dE_dv:\n"<<dE_dv<<"gate[3].g:\n"<<gate[3].g;
   dE_dr = throttle(dE_dv,gate[3].g);
-  for(int i = 0;i < n_s;i++)dE_ds[i] += dE_dr[i]*(1-r[i]*r[i])/2; // update dE_ds from local error gradient
-  dE_dg = throttle(dE_dv,r);
-  gate[3].b_step(dE_dg); // r was saved during the forward step
+  cout << "r:\n"<<r<<"dE_dr:\n"<<dE_dr;
   
+  for(int i = 0;i < n_s;i++)dE_ds[i] += dE_dr[i]*(1-r[i+1]*r[i+1])/2; // update dE_ds from local error gradient
+  dE_dg = throttle(dE_dv,r);
+  cout <<"dE_ds:\n"<<dE_ds<<"dE_dg:\n"<<dE_dg;
+  gate[3].b_step(dE_dg); // r was saved during the forward step
+
   // OK, now dE_ds, dE_dv, and dE_dW(i,3) are updated past gate 3.
   // save for gate[1] backprop before pushing through the next operation
   RowVector<double> dE_ds1 = throttle(dE_ds,gate[2].g); 
@@ -167,7 +180,7 @@ LSTM::LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
            Matrix<double>& w) : n_s(ns0),n_x(nx0),ncells(nc),data(d),
                                output(o),W(w){
   int n = std::max(n_s,n_x);
-  dE_dW.reset(3*n_s,4*(n+1));
+  dE_dW.reset(W.nrows(),W.ncols());
   v.reset(n_s+1);
   s.reset(n_s+1);
   dE_ds.reset(n_s);
@@ -191,9 +204,9 @@ void LSTM::train(int niters,double a,double eps, double b1,
   ColVector<double> x(n_x+1);
   x[0] = 1;
   Array<double> E(ncells); // readout error at cell i
-  Array<RowVector<double>> dEi_dv(ncells);
+  Array<RowVector<double>> dEt_dv(ncells);
                // gradient of readout error at cell i
-  for(int i = 0;i < ncells;i++) dEi_dv[i].reset(n_s);
+  for(int i = 0;i < ncells;i++) dEt_dv[i].reset(n_s);
   double E_tot = 1.0;
   double b1t = b1;
   double b2t = b2;
@@ -209,29 +222,30 @@ void LSTM::train(int niters,double a,double eps, double b1,
     dE_dv.fill(0);
     dE_dW.fill(0);
     cout << "*****************begin iteration "<<it<<endl;
-    for(int t = 0;t < data.nrows()-ncells+1;t += ncells){
-      cout << "begin minibatch at t = "<<t<<endl;
-      for(int i = 0;i < ncells;i++){
-        for(int j = 0;j < n_x;j++) x[j+1] = data(i+t,j);
-        if(verbose) cout << format("\nCell[%d] before forward step\n",i)<<cell[i];
-        cell[i].forward_step(x);
-        E[i] = 0;
-        for(int j = 0;j < n_s;j++){
-          double delta = cell[i].v[j+1] - data(i,n_x+j);
-          E[i] += delta*delta; 
-          dEi_dv[i][j] = 2*delta;
-          output(t+i,j) = cell[i].v[j+1];
-        }
-        E_tot += E[i];
-        if(verbose) cout << format("\nCell[%d] after forward_step:\n",i)<<cell[i];
+    for(int t = 0;t < data.nrows();t ++){
+      //      cout << "begin minibatch at t = "<<t<<endl;
+      //      for(int i = 0;i < ncells;i++){
+      for(int j = 0;j < n_x;j++) x[j+1] = data(t,j);
+      if(verbose) cout << format("\nCell[%d] before forward step\n",t)<<cell[t];
+      cell[t].forward_step(x);
+      double delta = cell[t].v[1] - data(t,n_x); // goal is 1D
+      E[t] = delta*delta; // square error at time t
+      for(int j = 0;j < n_s;j++){
+        dEt_dv[t][j] = 2*delta;
+        output(t,j) = cell[t].v[j+1]; // save readout
       }
+      E_tot += E[t];
+      if(verbose)cout << format("\nCell[%d] after forward_step:\n",t)<<cell[t];
+      cout << format("\iteration %d, step %d: v = %f, data = %f, delta = %f\n",
+                     it,t,output(t,0),data(t,n_x),delta);
+    }
 
-      for(int i = ncells-1;i >= 0;i--){
-        //cout << format("\nCell[%d] before backward_step:\n",i)<<cell[i];
-        cell[i].backward_step(dEi_dv[i]);
-        //cout << format("\nCell[%d] after backward_step:\n",i)<<cell[i];
-      }
-     }
+    for(int t = data.nrows()-1;t >= 0;t--){
+      //cout << format("\nCell[%d] before backward_step:\n",t)<<cell[t];
+      cell[t].backward_step(dEt_dv[t]);
+      cout << format("\nCell[%d] after backward_step:\n",t)<<cell[t];
+    }
+
     E_tot /= data.nrows();
     cout <<format("iteration %d mean error: %f\n",it,E_tot);
     
@@ -250,6 +264,6 @@ void LSTM::train(int niters,double a,double eps, double b1,
         b2t *= b2;
       }
     }      
-  } // on to next iteration
+ } // on to next iteration
   cout << "output:\n"<< output;
 }

@@ -14,7 +14,7 @@ ColVector<double> augment(ColVector<double>& x);
 
 inline double sigma(double u){return 1/(1+exp(-u));}
 
-void squash(ColVector<double>& x);
+void squash(ColVector<double>& x, double b = .9);
 
 void bulge(ColVector<double>& x,int n = 0);
 

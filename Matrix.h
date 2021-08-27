@@ -179,7 +179,7 @@ template<typename SCALAR>
 class Matrix {
 protected:
   MemoryBlock<SCALAR> data;
-  int offset; // these parameters support strides
+  int offset; // these parameters support slices
   int _nrows;
   int _ncols;
   int col_stride;
