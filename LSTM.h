@@ -169,7 +169,7 @@ struct LSTM {
   int ncells;
   int n_s;
   int n_x;
-  Matrix<double> data; 
+  Array<ColVector<double>> data; 
   Matrix<double> output;
   Matrix<double> W;
   Matrix<double> dE_dW;
@@ -178,8 +178,8 @@ struct LSTM {
   RowVector<double> dE_ds;
   RowVector<double> dE_dv;
 public:
-  LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
-       Matrix<double>& w);
+  LSTM(int ns0, int nx0, int nc, Array<ColVector<double>>& d,
+       Matrix<double>& o,Matrix<double>& w);
   void train(int niters,double a = .001,double eps = 1.0e-8, 
              double b1 = .9,double b2 = .999);
 };
