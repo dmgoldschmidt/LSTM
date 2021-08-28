@@ -48,3 +48,21 @@ Note that W_v and W_s are n_s x (n_s+1) while W_x is n_s x (n_x+1). So W will be
 Mon 09 Aug 2021 01:47:02 PM PDT
 OK, I recoded LSTM.h,cc to use a packed parameter matrix W, and I now have a clean compile and a complete
 execution of test_LSTM with one Cell.  No idea if the answer is correct, though.
+
+Sat 28 Aug 2021 08:42:08 AM PDT
+I've been lax about log entries, and there's been a fair amount of water under
+the bridge since the last post.  As of now, I've started a new branch:
+soft_max, with two significant changes: a) the data format is now 1-hot,
+for categorical data, and b) the error computation is now soft_max to get
+p = prob(goal), followed by error = -log(p), which is back-propped at every
+cell. So in effect, n_x = n_s = #categories.  Right now, the code is very
+murky due to all the soft copying of v,s,dE_dv,dE_ds.  I'm about to clean
+this up.  I also want to eliminate augmented vectors, because it's too
+bug-prone.  Instead, I will use two slices into W: bias_k and weights_k
+for k = v,s,x in each Gate.  I should probably rename W -> P for parameters.
+For continuous data, the soft_max output could be input e.g. into a
+Gaussian mixture output distribution without much additional effort. And
+we could re-estimate the Gaussian parameters a la HMM if we wanted to.
+In this case, we could run the observations through the output model
+to get "gammas" i.e. "soft 1-hot vectors" for input to the LSTM.  This
+seems like it would be an interesting hybrid model.
