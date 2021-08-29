@@ -71,7 +71,7 @@ ColVector<double> Gate::f_step(ColVector<double>& v0, //readout
   }
   else{
     bulge(g); // gate 0 only
-    g = augment(g);
+    //    g = augment(g);
   }
   if(verbose) cout <<format("gate[%d] at exit: g = ",gn)<<g.Tr();
   return g;
@@ -96,7 +96,10 @@ void Gate::b_step(RowVector<double>& dE_dg)
    */
   // update weight/bias gradients (v_old,s_old,x were saved by f_step)
   if(verbose) cout << "about to update dE_dW_v.  v = "<<v.Tr()<<", dE_dW_v = "<<dE_dW_v;
-  dE_dW_v += (v_old*dE_dg).Tr(); 
+  dE_dW_v += (v_old*dE_dg).Tr(); /* NOTE: v[0] = 1 is just what we need
+                                  * to get dE_d(bias), and transposing is
+                                  * really pcorrect!
+                                  */
   if(gn > 0) dE_dW_s += (s_old*dE_dg).Tr();
   dE_dW_x += (x*dE_dg).Tr();
   if(verbose) cout << "gate "<<gn<<" b_step: dE_dg = "<<dE_dg<<", dE_dv = "<<dE_dv<<" , dE_ds = "<<dE_ds<<endl;
@@ -105,21 +108,36 @@ void Gate::b_step(RowVector<double>& dE_dg)
  
 /*********************** begin Cell code here */
 
-inline ColVector<double> throttle(ColVector<double>& x, ColVector<double>& g){
-  // x may be augmented or not
-  ColVector<double> y = x.copy(); 
-  int n = (x.nrows() == g.nrows() ? 0:1); 
+void throttle(ColVector<double>& x, ColVector<double>& g,
+                      ColVector<double> &y){
+  int n = (x.nrows() == g.nrows()?  0 : 1);
+  assert(x.nrows() == y.nrows());
   for(int i = 0;i < g.nrows();i++) y[i+n] = x[i+n]*g[i];
-  return y;
 }
 
-inline RowVector<double> throttle(RowVector<double>& x, ColVector<double>& g){ // this version is for backprop
+void throttle(RowVector<double>& x, ColVector<double>& g,
+                      RowVector<double> &y){
   // x may be augmented or not
-  RowVector<double> y = x.copy(); // output has dim(x) (typically n_s)
-  int n = (g.nrows() == y.ncols() ? 0: 1);
-  for(int i = 0;i < y.ncols();i++) y[i] = x[i]*g[n+i];
-  return y;
+  int n = (x.nrows() == g.nrows()?  0 : 1);
+  assert(x.nrows() == y.nrows());
+  for(int i = 0;i < g.nrows();i++) y[i+n] = x[i+n]*g[i];
 }
+
+// inline ColVector<double> throttle(ColVector<double>& x, ColVector<double>& g){
+//   // x may be augmented or not
+//   ColVector<double> y = x.copy(); 
+//   int n = (x.nrows() == g.nrows() ? 0:1); 
+//   for(int i = 0;i < g.nrows();i++) y[i+n] = x[i+n]*g[i];
+//   return y;
+// }
+
+// inline RowVector<double> throttle(RowVector<double>& x, ColVector<double>& g){ // this version is for backprop
+//   // x may be augmented or not
+//   RowVector<double> y = x.copy(); // output has dim(x) (typically n_s)
+//   int n = (g.nrows() == y.ncols() ? 0: 1);
+//   for(int i = 0;i < y.ncols();i++) y[i] = x[i]*g[n+i];
+//   return y;
+// }
 
 void Cell::reset(int n_s0, int n_x0, ColVector<double>& v0,
                  ColVector<double>& s0, Matrix<double>& W0,
@@ -133,47 +151,53 @@ void Cell::reset(int n_s0, int n_x0, ColVector<double>& v0,
     gate[j].reset(W0,dE_dW0,dE_dv0,dE_ds0,n_s,n_x,j);
   }
   r.reset(n_s+1);
+  v_out.reset(n_s+1);
   dE_dr.reset(n_s);
   dE_dg.reset(n_s);
+  dE_ds1.reset(n_s);
 }
 
 void Cell::forward_step(ColVector<double>& x){ // v and s are Cell variables
   gate[0].f_step(v,s,x);
   gate[1].f_step(v,s,x);
   gate[2].f_step(v,s,x);
-  //  ColVector<double> g1 = augment(gate[0].g);
-  s.copy(throttle(s, gate[2].g) + throttle(gate[0].g, gate[1].g));
+  ColVector<double> t(n_s); // temporary
+  throttle(s, gate[2].g,s);
+  throttle(gate[0].g, gate[1].g,t);
+  t = augment(t);
+  s += t;
   s[0] = 1.0;
-   // s <- s .* gate[2].g + (bulge(gate[0].g) .* gate[1].g)
+   // s <- s .* gate[2].g + gate[0].g .* gate[1].g)
   gate[3].f_step(v,s,x);
-  r = s.copy();
+  r.copy(s);
   bulge(r,1); 
-  v.copy(throttle(r, gate[3].g)); // v <- bulge(s) .* gate[3].g
+  throttle(r, gate[3].g,v); // v <- bulge(s) .* gate[3].g
+  v_out.copy(v); // save output for error comp
 }
 
 void Cell::backward_step(RowVector<double>& dEn_dv){
   dE_dv += dEn_dv; // combine local error gradient
   if(verbose) cout << "Backward step:  dEn_dv:\n"<<dEn_dv<<"dE_dv:\n"<<dE_dv<<"gate[3].g:\n"<<gate[3].g;
-  dE_dr = throttle(dE_dv,gate[3].g);
+  throttle(dE_dv,gate[3].g,dE_dr);
   //cout << "r:\n"<<r<<"dE_dr:\n"<<dE_dr;
   
   for(int i = 0;i < n_s;i++)dE_ds[i] += dE_dr[i]*(1-r[i+1]*r[i+1])/2; // update dE_ds from local error gradient
-  dE_dg = throttle(dE_dv,r);
+  throttle(dE_dv,r,dE_dg);
   //cout <<"dE_ds:\n"<<dE_ds<<"dE_dg:\n"<<dE_dg;
   gate[3].b_step(dE_dg); // r was saved during the forward step
 
   // OK, now dE_ds, dE_dv, and dE_dW(i,3) are updated past gate 3.
-  // save for gate[1] backprop before pushing through the next operation
-  RowVector<double> dE_ds1 = throttle(dE_ds,gate[2].g); 
+  dE_ds1.copy(dE_ds);   /* save for gate[1] backprop before pushing 
+                         * through the next operation*/
+  throttle(dE_ds,gate[2].g,dE_ds); 
   if(verbose) cout << format("gate[2] pre_throttle dE_ds: %f, gate[2].s: %f\n",dE_ds[0],gate[2].s);
-  dE_dg = throttle(dE_ds,gate[2].s);
+  throttle(dE_ds,gate[2].s_old,dE_dg); // set dE_dg for gate 2
   gate[2].b_step(dE_dg);
-  dE_ds += dE_ds1;
   // OK, now we're past gate[2]
-  dE_dg = throttle(dE_ds,gate[0].g);
-  dE_ds1 = throttle(dE_ds,gate[1].g);
+  throttle(dE_ds1,gate[0].g,dE_dg);
   gate[1].b_step(dE_dg);
-  gate[0].b_step(dE_ds1);
+  throttle(dE_ds1,gate[1].g,dE_dg);
+  gate[0].b_step(dE_dg);
 }
   
 LSTM::LSTM(int ns0, int nx0, int nc, Array<ColVector<double>>& d, Matrix<double>& o,
@@ -233,7 +257,7 @@ void LSTM::train(int niters,double a,double eps, double b1,
       dEt_dv[t].fill(0);
       E[t] = 0;
       for(int i = 0;i < n_s;i++){
-        e[i] = exp(cell[t].v[i+1]);
+        e[i] = exp(cell[t].v_out[i+1]);
         smax += e[i];
         if(data[t+1][i] == 1) i0 = i; // note: data is 1-hot encoded
       }
@@ -268,6 +292,6 @@ void LSTM::train(int niters,double a,double eps, double b1,
   } // on to next iteration
   cout << "output:\n";
   for(int t = 0;t < T;t++){
-    cout << format("t = %d: ",t)<<cell[t].v_old.Tr()<<cell[t].s_old.Tr();
+    cout << format("t = %d: ",t)<<cell[t].v_out.Tr();
   }
 }

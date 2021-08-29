@@ -36,8 +36,8 @@ int main(int argc, char** argv){
   int ndata = 20; // no. of data points
   int seed = 12345;
   int ncells = 0;
-  int niters = 10;
-  double alpha = .001; // parameter correction step_size
+  int niters = 100;
+  double alpha = .1; // parameter correction step_size
   
   GetOpt cl(argc,argv);
   cl.get("n_x",n_x);

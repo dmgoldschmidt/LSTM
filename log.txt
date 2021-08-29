@@ -60,9 +60,15 @@ murky due to all the soft copying of v,s,dE_dv,dE_ds.  I'm about to clean
 this up.  I also want to eliminate augmented vectors, because it's too
 bug-prone.  Instead, I will use two slices into W: bias_k and weights_k
 for k = v,s,x in each Gate.  I should probably rename W -> P for parameters.
+
+TO DO: check the dE_dW update for how bias is being handled.  This would
+need to be done separately.
+
 For continuous data, the soft_max output could be input e.g. into a
 Gaussian mixture output distribution without much additional effort. And
 we could re-estimate the Gaussian parameters a la HMM if we wanted to.
 In this case, we could run the observations through the output model
 to get "gammas" i.e. "soft 1-hot vectors" for input to the LSTM.  This
 seems like it would be an interesting hybrid model.
+
+

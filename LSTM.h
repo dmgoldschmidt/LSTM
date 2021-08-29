@@ -87,7 +87,10 @@ struct Gate {
     U_x = W_x.slice(0,1,n_s,n_x);
 
     // v_old,s_old,x,g are all saved for backprop
-    g.reset(n_s); 
+    g.reset(n_s);
+    v_old.reset(n_s+1);
+    s_old.reset(n_s+1);
+    x.reset(n_x+1);
   }
   
   // Gate& operator=(const Gate& gg){
@@ -134,7 +137,7 @@ struct Cell {
   int n_x; // no. of input variables
   Array<Gate> gate; // each Cell has a separate set of four Gates.
   // The following six items are defined in LSTM and updated by every Cell/Gate
-  ColVector<double> v;
+  ColVector<double> v,v_out;
   ColVector<double> s;
   Matrix<double> W;
   Matrix<double> dE_dW;
@@ -144,6 +147,7 @@ struct Cell {
   ColVector<double> r; // intermediate output defined here to avoid dynamic memory thrashing
   RowVector<double> dE_dr;
   RowVector<double> dE_dg;
+  RowVector<double> dE_ds1; // intermediate input for gates 0,1
   Cell(void){}
   void reset(
        int n_s0, // no. of state parameters
@@ -179,9 +183,9 @@ struct LSTM {
   RowVector<double> dE_dv;
 public:
   LSTM(int ns0, int nx0, int nc, Array<ColVector<double>>& d,
-       Matrix<double>& o,Matrix<double>& w);
-  void train(int niters,double a = .001,double eps = 1.0e-8, 
-             double b1 = .9,double b2 = .999);
+       Matrix<double>& o, Matrix<double>& w);
+  void train(int niters, double a = .001, double eps = 1.0e-8, 
+             double b1 = .9, double b2 = .999);
 };
 
 #endif
