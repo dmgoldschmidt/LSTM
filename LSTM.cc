@@ -118,9 +118,14 @@ void throttle(ColVector<double>& x, ColVector<double>& g,
 void throttle(RowVector<double>& x, ColVector<double>& g,
                       RowVector<double> &y){
   // x may be augmented or not
-  int n = (x.nrows() == g.nrows()?  0 : 1);
-  assert(x.nrows() == y.nrows());
-  for(int i = 0;i < g.nrows();i++) y[i+n] = x[i+n]*g[i];
+  int n = (x.ncols() == g.nrows()?  0 : 1);
+  assert(x.ncols() == y.ncols());
+  for(int i = 0;i < x.ncols();i++){
+    // if(i+n >= y.ncols()){
+    //   cout << "we're here\n";
+    // }
+    y[i] = x[i]*g[i+n];
+  }
 }
 
 // inline ColVector<double> throttle(ColVector<double>& x, ColVector<double>& g){
@@ -228,8 +233,10 @@ void LSTM::train(int niters,double a,double eps, double b1,
   ColVector<double> x(n_x+1);
   x[0] = 1;
   Array<double> E(ncells); // readout error at cell i
+  double smax(0), p(0);
   Array<RowVector<double>> dEt_dv(ncells);
                // gradient of readout error at cell i
+  Array<double> e(n_s);
   for(int i = 0;i < ncells;i++) dEt_dv[i].reset(n_s);
   double E_tot = 1.0;
   double b1t = b1;
@@ -238,24 +245,23 @@ void LSTM::train(int niters,double a,double eps, double b1,
   M.fill(0); V.fill(0);;
   int it = 0;
   int T = data.len();
+  v.fill(0); v[0] = 1.0;
+  s.fill(0); s[0] = 1.0;
   while( it++ < niters && E_tot > eps){
     E_tot = 0;
-    v.fill(0); v[0] = 1.0;
-    s.fill(0); s[0] = 1.0;
     dE_ds.fill(0);
     dE_dv.fill(0);
     dE_dW.fill(0);
-    Array<double> e(n_s);
     cout << "*****************begin iteration "<<it<<endl;
     for(int t = 0;t < T-1;t ++){
       //      cout << "begin minibatch at t = "<<t<<endl;
       //      for(int i = 0;i < ncells;i++){
       if(verbose) cout << format("\nCell[%d] before forward step\n",t)<<cell[t];
       cell[t].forward_step(data[t]);
-      double smax(0), p(0),q(0);
       int i0;
       dEt_dv[t].fill(0);
       E[t] = 0;
+      smax = 0;
       for(int i = 0;i < n_s;i++){
         e[i] = exp(cell[t].v_out[i+1]);
         smax += e[i];
@@ -290,8 +296,16 @@ void LSTM::train(int niters,double a,double eps, double b1,
     b1t *= b1;
     b2t *= b2;
   } // on to next iteration
+  cout << "dE_dW:\n"<<dE_dW;
   cout << "output:\n";
+  
   for(int t = 0;t < T;t++){
-    cout << format("t = %d: ",t)<<cell[t].v_out.Tr();
+    smax = 0;
+    for(int i = 0;i < n_s;i++){
+      e[i] = exp(cell[t].v_out[i+1]);
+      smax += e[i];
+    }
+    for(int i = 0;i < n_s;i++) e[i] /= smax;
+    cout << format("t = %d: ",t)<<e<<", "<<cell[t].v_out;
   }
 }

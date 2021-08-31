@@ -72,3 +72,13 @@ to get "gammas" i.e. "soft 1-hot vectors" for input to the LSTM.  This
 seems like it would be an interesting hybrid model.
 
 
+Mon 30 Aug 2021 09:02:41 AM PDT
+The soft_max branch now compiles and runs, except that there's a memory
+corruption error on exit.  I'll see if valgrind helps.  Unfortunately,
+however, the output is garbage after 100 iterations.
+
+Tue 31 Aug 2021 04:19:42 PM PDT
+OK, I *think* valgrind spotted the bug (it was certainly a bug!) and
+I'm now running without apparent memory corruption.  But the output
+from 100 time steps and revs input is essentially 0,0.  Looks like
+the next place to look is at the error correction.
