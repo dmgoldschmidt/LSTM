@@ -33,7 +33,7 @@ void squash(ColVector<double>& x, double b){
 }
 
 void bulge(ColVector<double>& x, int n){ // n = 0 if unaugmented, 1 if augmented
-  for(int i = n;i < x.nrows();i++) x[i] =2*sigma(x[i])-1;
+  for(int i = n;i < x.nrows();i++) x[i] = sigma(2*x[i]) - sigma(-2*x[i]);;
 }
 
 // void clip(ColVector<double>& x, double b){
@@ -184,13 +184,13 @@ void Cell::backward_step(RowVector<double>& dEn_dv){
   dE_dv += dEn_dv; // combine local error gradient
   if(verbose) cout << "Backward step:  dEn_dv:\n"<<dEn_dv<<"dE_dv:\n"<<dE_dv<<"gate[3].g:\n"<<gate[3].g;
   throttle(dE_dv,gate[3].g,dE_dr);
-  //cout << "r:\n"<<r<<"dE_dr:\n"<<dE_dr;
+  //  cout << "r:\n"<<r<<"dE_dr:\n"<<dE_dr;
   
   for(int i = 0;i < n_s;i++)dE_ds[i] += dE_dr[i]*(1-r[i+1]*r[i+1])/2; // update dE_ds from local error gradient
   throttle(dE_dv,r,dE_dg);
   //cout <<"dE_ds:\n"<<dE_ds<<"dE_dg:\n"<<dE_dg;
   gate[3].b_step(dE_dg); // r was saved during the forward step
-
+  //cout << "dE_dW:\n"<<dE_dW;
   // OK, now dE_ds, dE_dv, and dE_dW(i,3) are updated past gate 3.
   dE_ds1.copy(dE_ds);   /* save for gate[1] backprop before pushing 
                          * through the next operation*/
@@ -244,14 +244,14 @@ void LSTM::train(int niters,double a,double eps, double b1,
   Matrix<double> M(W.nrows(),W.ncols()), V(W.nrows(),W.ncols());
   M.fill(0); V.fill(0);;
   int it = 0;
-  int T = data.len();
-  v.fill(0); v[0] = 1.0;
-  s.fill(0); s[0] = 1.0;
+  int T = std::min(ncells,data.len());
   while( it++ < niters && E_tot > eps){
     E_tot = 0;
     dE_ds.fill(0);
     dE_dv.fill(0);
     dE_dW.fill(0);
+    v.fill(0); v[0] = 1.0;
+    s.fill(0); s[0] = 1.0;
     cout << "*****************begin iteration "<<it<<endl;
     for(int t = 0;t < T-1;t ++){
       //      cout << "begin minibatch at t = "<<t<<endl;
@@ -265,7 +265,7 @@ void LSTM::train(int niters,double a,double eps, double b1,
       for(int i = 0;i < n_s;i++){
         e[i] = exp(cell[t].v_out[i+1]);
         smax += e[i];
-        if(data[t+1][i] == 1) i0 = i; // note: data is 1-hot encoded
+        if(data[t+1][i+1] == 1) i0 = i; // note: data is 1-hot encoded
       }
       p = e[i0]/smax;
       E_tot -= log(p);
@@ -295,6 +295,7 @@ void LSTM::train(int niters,double a,double eps, double b1,
     }      
     b1t *= b1;
     b2t *= b2;
+    //    cout << "iteration "<<it<<", W:\n"<<W<<"dE_dW:\n"<<dE_dW;
   } // on to next iteration
   cout << "dE_dW:\n"<<dE_dW;
   cout << "output:\n";

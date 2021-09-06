@@ -31,8 +31,8 @@ void ranfill(Matrix<double>& M, Normaldev& gen){
 }
 
 int main(int argc, char** argv){
-  int n_x = 2; // data dimension
-  int n_s = 2; // state-output dimension
+  int n_x = 4; // data dimension
+  int n_s = 4; // state-output dimension
   int ndata = 20; // no. of data points
   int seed = 12345;
   int ncells = 0;
@@ -49,20 +49,23 @@ int main(int argc, char** argv){
   cl.get("alpha",alpha);
   
   feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
-  Normaldev normal(0,1,seed);
+  Normaldev normal(0,.01,seed);
   int n = std::max(n_s,n_x);
+  if(ncells == 0)ncells = ndata;
   Matrix<double> W(3*n_s,4*(n+1)); // n+1 leaves room for bias
-  ranfill(W,normal);
+  ranfill(W,normal); // small random numbers
+  //W.fill(0);
   cout << "initial parameters:\n"<<W;
   Ran random(seed);
   //  Array<int> data0(ndata+n_x+n_s);
+ 
   Array<ColVector<double>> data(ndata);
   cout << "data:\n";
   for(int t = 0;t < ndata;t++){
     data[t].reset(n_x+1);
     data[t][0] = 1;  // augmentation
-    data[t][t%2 + 1] = 1; // 1-hot revs
-    data[t][(t+1)%2 + 1] = 0;
+    data[t][t%2 + 1] = data[t][t%2 + 3] = 1; 
+    data[t][(t+1)%2 + 1] = data[t][(t+1)%2 + 3] = 0;
     cout << data[t].Tr();
   }
   Matrix<double> output(ndata,n_s);
