@@ -48,3 +48,26 @@ Note that W_v and W_s are n_s x (n_s+1) while W_x is n_s x (n_x+1). So W will be
 Mon 09 Aug 2021 01:47:02 PM PDT
 OK, I recoded LSTM.h,cc to use a packed parameter matrix W, and I now have a clean compile and a complete
 execution of test_LSTM with one Cell.  No idea if the answer is correct, though.
+
+Mon 06 Sep 2021 02:46:31 PM PDT
+OK, I'm back on the master branch.  The soft_max branch is still there, but it didn't really work any better
+than what I was already doing.  I've been doing some online reading about LSTM, and am totally disgusted
+with the poor quality of the articles.  As unfortunately seems typical of CS writing, almost every term is
+either undefined, multiply defined, or at best poorly defined.  So far, the best bet is the developer docs
+under "keras documentation".  After following a few links there, I discovered that a keras "unit" is just an
+LSTM cell, but get this:  the parameter "nunits=xx" in one of the setup sequences has nothing to do with how many cells
+are going to exist!!  Believe it or not, it actually refers to the dimension of the hidden state space!!!
+Apparently, keras assigns one cell per timestep, and the no. of timesteps is inferred from the size of the data
+matrix (you have to give it all the data at once).
+
+I came across a "tutorial" at some point that provided python code for a toy LSTM problem using keras. And there was
+a space for comments/questions, so I asked a few questions.  Turned out the author either a) completely misunderstood
+or ignored the questions, and b) confidently asserted that "there are no cells in keras" which is of course absurd.
+
+Apparently, the secret of LSTM is to have a high-dimensional hidden state space.  So far, I have no idea how high,
+and in any case that will make the readout the same high dimension and therefore uninterpretable directly.  So
+it looks like another "output layer" is needed to convert the readout to something from which an error and its
+gradient can be computed.  So far, I have no documentation on this.  It is conveniently ignored in "LSTM fundamentals"
+which I've followed to code the LSTM.  Presumably, this layer would be some set of standard squashed affine maps,
+maybe one such map for every different training goal.  I will try a few more things on the master branch before
+suspending work until I know more.
