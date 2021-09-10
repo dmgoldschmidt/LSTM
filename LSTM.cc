@@ -133,8 +133,13 @@ void Cell::reset(int n_s0, int n_x0, ColVector<double>& v0,
     gate[j].reset(W0,dE_dW0,dE_dv0,dE_ds0,n_s,n_x,j);
   }
   r.reset(n_s+1);
+  v_out.reset(n_s+1);
   dE_dr.reset(n_s);
   dE_dg.reset(n_s);
+  Y.reset(n_y,n_s+1);
+  dE_dY.reset(Y.nrows(),Y.ncols()); 
+  Y = W.slice(3*n_s,0,n_y,n_s+1); // output biases and weights
+  dE_dY = dE_dW.slice(3*n_s,0,n_y,n_s+1);
 }
 
 void Cell::forward_step(ColVector<double>& x){ // v and s are Cell variables
@@ -146,9 +151,10 @@ void Cell::forward_step(ColVector<double>& x){ // v and s are Cell variables
   s[0] = 1.0;
    // s <- s .* gate[2].g + (bulge(gate[0].g) .* gate[1].g)
   gate[3].f_step(v,s,x);
-  r = s.copy();
+  r.copy(s);
   bulge(r,1); 
   v.copy(throttle(r, gate[3].g)); // v <- bulge(s) .* gate[3].g
+  v_out.copy(v); // save the readout for backprop
 }
 
 void Cell ::backward_step(RowVector<double>& dEn_dv){
@@ -176,24 +182,24 @@ void Cell ::backward_step(RowVector<double>& dEn_dv){
   gate[0].b_step(dE_ds1);
 }
   
-LSTM::LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
-           Matrix<double>& w) : n_s(ns0),n_x(nx0),ncells(nc),data(d),
-                               output(o),W(w){
-  int n = std::max(n_s,n_x);
+LSTM::LSTM(int ns0, int nx0, ny0, int nc, Matrix<double>& d, Matrix<double>& w) :
+  n_s(ns0),n_x(nx0),n_y(ny0),ncells(nc),data(d), W(w){
+  //  int n = std::max(n_s,n_x);
   dE_dW.reset(W.nrows(),W.ncols());
   v.reset(n_s+1);
   s.reset(n_s+1);
   dE_ds.reset(n_s);
   dE_dv.reset(n_s);
+  
 
-  assert(data.ncols() == n_x+n_s); // contexts + goals
+  assert(data.ncols() == n_x+n_y); // contexts + goals
   assert(ncells <= data.nrows());
   if(ncells == 0) ncells = data.nrows();
   cell.reset(ncells); 
 
   for(int i = 0;i < ncells;i++)
-    cell[i].reset(n_s,n_x,v,s,W,dE_dW,dE_dv,dE_ds);
-  cout << format("n_s: %d, n_x: %d, ncells: %d\n",n_s,n_x,ncells);
+    cell[i].reset(n_s,n_x,n_y,v,s,W,dE_dW,dE_dv,dE_ds);
+  cout << format("n_s: %d, n_x: %d, n_y: %d, ncells: %d\n",n_s,n_x,n_y,ncells);
   cout << "sizeof(Cell) = "<<sizeof(cell[0])<<endl;
   if(verbose) cout << "initial parameters:\n"<<W;
 }
@@ -201,7 +207,7 @@ LSTM::LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
 void LSTM::train(int niters,double a,double eps, double b1,
                  double b2){
 
-  ColVector<double> x(n_x+1);
+  ColVector<double> x(n_x+1),y0(n_y),y(n_y),delta(n_y);;
   x[0] = 1;
   Array<double> E(ncells); // readout error at cell i
   Array<RowVector<double>> dEt_dv(ncells);
@@ -221,20 +227,23 @@ void LSTM::train(int niters,double a,double eps, double b1,
     dE_ds.fill(0);
     dE_dv.fill(0);
     dE_dW.fill(0);
+    dE_dY.fill(0);
     cout << "*****************begin iteration "<<it<<endl;
     for(int t = 0;t < data.nrows();t ++){
       //      cout << "begin minibatch at t = "<<t<<endl;
       //      for(int i = 0;i < ncells;i++){
       for(int j = 0;j < n_x;j++) x[j+1] = data(t,j);
+      for(int j = 0;j < n_y;j++) y0[j] = data(t,n_x+j); //load the goal(s)
       if(verbose) cout << format("\nCell[%d] before forward step\n",t)<<cell[t];
       cell[t].forward_step(x);
-      double delta = cell[t].v[1] - data(t,n_x); // goal is 1D
-      E[t] = delta*delta; // square error at time t
-      for(int j = 0;j < n_s;j++){
-        dEt_dv[t][j] = 2*delta;
-        output(t,j) = cell[t].v[j+1]; // save readout
-      }
-      E_tot += E[t];
+      y = Y*cell[t].v_out; // convert readout to measurable output
+      delta = y - y0; // "distance" to goal
+      E[t] = delta.Tr()*delta;
+
+      dE_dY += delta*cell[t].v_out.Tr()*2;
+      dEt_dv[t] = delta.Tr()*Y;
+      dEt_dv[t] *= 2;
+       E_tot += E[t];
       if(verbose)cout << format("\nCell[%d] after forward_step:\n",t)<<cell[t];
       cout << format("\iteration %d, step %d: v = %f, data = %f, delta = %f\n",
                      it,t,output(t,0),data(t,n_x),delta);

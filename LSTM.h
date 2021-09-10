@@ -130,24 +130,29 @@ struct Cell {
    */
   friend class LSTM;
   friend class Gate;
-  int n_s; // no. of  state and output variables
+  int n_s; // no. of  state/readout variables
   int n_x; // no. of input variables
+  int n_y; // no. of output variables
   Array<Gate> gate; // each Cell has a separate set of four Gates.
   // The following six items are defined in LSTM and updated by every Cell/Gate
   ColVector<double> v;
   ColVector<double> s;
   Matrix<double> W;
+  Matrix<double> Y;
   Matrix<double> dE_dW;
+  Matrix<double> dE_dY;
   RowVector<double> dE_dv;
   RowVector<double> dE_ds;
   
   ColVector<double> r; // intermediate output defined here to avoid dynamic memory thrashing
+  ColVector<double> v_out; // cell readout saved for error computation
   RowVector<double> dE_dr;
   RowVector<double> dE_dg;
   Cell(void){}
   void reset(
        int n_s0, // no. of state parameters
-       int n_x0, // no. of input parameters
+       int n_x0, // no. of input parameters per cell
+       int n_y0, // no. of output parameters per cell
        ColVector<double>& v0, 
        ColVector<double>& s0,
        Matrix<double>& W0,
@@ -169,8 +174,9 @@ struct LSTM {
   int ncells;
   int n_s;
   int n_x;
+  int n_y;
   Matrix<double> data; 
-  Matrix<double> output;
+  //  Matrix<double> output;
   Matrix<double> W;
   Matrix<double> dE_dW;
   ColVector<double> v;
