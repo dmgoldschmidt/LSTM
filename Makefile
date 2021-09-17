@@ -94,9 +94,9 @@ MarketHMM: MarketHMM.cc HMM.o GetOpt.o util.o Array.h Matrix.h Gaussian.h Awk.o 
 gzstream/gzstream.o -lz
 qr_reg: qr_reg.cc QRreg.o GetOpt.o util.o
 	$(CC) $(CFLAGS) -o qr_reg qr_reg.cc QRreg.o util.o GetOpt.o 
-LSTM.o: LSTM.h LSTM.cc $(INC)/Matrix.h $(INC)/Array.h
+LSTM.o: LSTM.h LSTM.cc $(INC)/Matrix.h $(INC)/Array.h matrix.o
 	$(CC) $(CFLAGS) -c LSTM.cc
-test_LSTM: LSTM.o test_LSTM.cc util.o $(INC)/Matrix.h $(INC)/Array.h GetOpt.o
+test_LSTM: LSTM.o test_LSTM.cc util.o $(INC)/Matrix.h $(INC)/Array.h GetOpt.o matrix.o
 	$(CC) $(CFLAGS) -o test_LSTM test_LSTM.cc LSTM.o util.o GetOpt.o
 
 

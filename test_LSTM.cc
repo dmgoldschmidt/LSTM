@@ -38,12 +38,12 @@ int main(int argc, char** argv){
   int seed = 12345;
   int ncells = 0;
   int niters = 100;
-  double alpha = .1; // parameter correction step_size
+  double alpha = .001; // parameter correction step_size
   
   GetOpt cl(argc,argv);
   cl.get("n_x",n_x);
   cl.get("n_s",n_s);
-  cl.get("n_y",n_y)
+  cl.get("n_y",n_y);
   cl.get("ndata",ndata);
   cl.get("seed",seed);
   cl.get("ncells",ncells);
@@ -63,7 +63,7 @@ int main(int argc, char** argv){
     data0[t] = 10*(t+1);
   }
   for(int t = 0;t < ndata;t++){
-    for(int i = 0;i < n+x+n_y;i++){
+    for(int i = 0;i < n_x+n_y;i++){
       data(t,i) = data0[t+i];
     }
   }
@@ -72,7 +72,6 @@ int main(int argc, char** argv){
   LSTM lstm(n_s,n_x,n_y,ncells,data,W);
   lstm.train(niters,alpha);
   cout << "updated parameters:\n"<<W;
-  cout << "output:\n"<<output;
 }
 
 

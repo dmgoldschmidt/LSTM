@@ -71,3 +71,9 @@ gradient can be computed.  So far, I have no documentation on this.  It is conve
 which I've followed to code the LSTM.  Presumably, this layer would be some set of standard squashed affine maps,
 maybe one such map for every different training goal.  I will try a few more things on the master branch before
 suspending work until I know more.
+
+Fri 17 Sep 2021 01:55:25 PM PDT
+Well, I tried a few more things:  n_s = 50 and various different values of alpha, but no joy.  I'm pretty sure there's
+still some bugs, but I I just don't think I know enough about what's going on to debug the code intelligently.  So
+I'm suspending the project for now.
+

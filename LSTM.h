@@ -12,7 +12,7 @@
 
 ColVector<double> augment(ColVector<double>& x);
 
-inline double sigma(double u){return 1/(1+exp(-u));}
+//inline double sigma(double u){return 1/(1+exp(-u));}
 
 void squash(ColVector<double>& x, double b = .9);
 
@@ -26,7 +26,7 @@ struct Gate {
    * In the special case gate_no = 0, there is no s input and sigma
    * is replaced by 2*sigma - 1. 
    * It is called a gate because its output modulates some information 
-   * signal z by component-wise multiplication.  So a gate component 
+   * signal z = v or s by component-wise multiplication.  So a gate component 
    * near 1 lets most of the corresponding component of z pass through, 
    * while a value near zero blocks most of that component.
    
@@ -138,9 +138,9 @@ struct Cell {
   ColVector<double> v;
   ColVector<double> s;
   Matrix<double> W;
-  Matrix<double> Y;
+  //  Matrix<double> Y;
   Matrix<double> dE_dW;
-  Matrix<double> dE_dY;
+  //  Matrix<double> dE_dY;
   RowVector<double> dE_dv;
   RowVector<double> dE_ds;
   
@@ -157,6 +157,8 @@ struct Cell {
        ColVector<double>& s0,
        Matrix<double>& W0,
        Matrix<double>& dE_dW0,
+       //       Matrix<double>& Y0,
+       //       Matrix<double>& dE_dY0,
        RowVector<double>& dE_dv0,
        RowVector<double>& dE_ds0);
   void forward_step(ColVector<double>& x);
@@ -177,15 +179,17 @@ struct LSTM {
   int n_y;
   Matrix<double> data; 
   //  Matrix<double> output;
-  Matrix<double> W;
-  Matrix<double> dE_dW;
+  Matrix<double> W; // all the affine parameters
+  Matrix<double> dE_dW; // all the gradients of W
+  Matrix<double> Y; //output weights and biases ( a slice of W)
+  Matrix<double> dE_dY; // the gradients of Y (a slice of dE_dW)
+  Matrix<double> Z; // output weights only
   ColVector<double> v;
   ColVector<double> s;
   RowVector<double> dE_ds;
   RowVector<double> dE_dv;
 public:
-  LSTM(int ns0, int nx0, int nc, Matrix<double>& d, Matrix<double>& o,
-       Matrix<double>& w);
+  LSTM(int ns0, int nx0, int ny0, int nc, Matrix<double>& d, Matrix<double>& w);
   void train(int niters,double a = .001,double eps = 1.0e-8, 
              double b1 = .9,double b2 = .999);
 };
